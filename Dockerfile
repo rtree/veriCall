@@ -33,6 +33,19 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
+# Secret Manager からマウントされる .env を読み込むスクリプト
+COPY --chown=nextjs:nodejs <<'EOF' /app/entrypoint.sh
+#!/bin/sh
+# Secret Manager からマウントされた .env があれば読み込む
+if [ -f /app/.env ]; then
+  set -a
+  . /app/.env
+  set +a
+fi
+exec node server.js
+EOF
+RUN chmod +x /app/entrypoint.sh
+
 USER nextjs
 
 EXPOSE 8080
@@ -40,4 +53,4 @@ EXPOSE 8080
 ENV PORT=8080
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["node", "server.js"]
+CMD ["/app/entrypoint.sh"]

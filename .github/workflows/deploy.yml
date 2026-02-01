@@ -1,0 +1,100 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches:
+      - master
+      - main
+
+env:
+  PROJECT_ID: ethglobal-479011
+  REGION: us-central1
+  SERVICE_NAME: vericall-ded916a01840
+  SECRET_NAME: vericall-env-caa4031fec2f
+  REGISTRY: us-central1-docker.pkg.dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Google Auth
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      # GitHub Secrets → GCP Secret Manager
+      - name: Update Secret Manager
+        run: |
+          # 環境変数ファイルを作成
+          cat << 'EOF' > /tmp/env-secrets
+          TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_PHONE_NUMBER=${{ secrets.TWILIO_PHONE_NUMBER }}
+          DESTINATION_PHONE_NUMBER=${{ secrets.DESTINATION_PHONE_NUMBER }}
+          FORWARD_TIMEOUT=${{ secrets.FORWARD_TIMEOUT }}
+          WHITELIST_NUMBERS=${{ secrets.WHITELIST_NUMBERS }}
+          VLAYER_API_KEY=${{ secrets.VLAYER_API_KEY }}
+          VLAYER_WEB_PROVER_URL=${{ secrets.VLAYER_WEB_PROVER_URL }}
+          VLAYER_ZK_PROVER_URL=${{ secrets.VLAYER_ZK_PROVER_URL }}
+          NEXT_PUBLIC_BASE_URL=${{ secrets.NEXT_PUBLIC_BASE_URL }}
+          NODE_ENV=production
+          EOF
+
+          # Secret が存在するか確認し、なければ作成
+          if gcloud secrets describe ${{ env.SECRET_NAME }} --project=${{ env.PROJECT_ID }} > /dev/null 2>&1; then
+            echo "Updating existing secret..."
+            gcloud secrets versions add ${{ env.SECRET_NAME }} \
+              --data-file=/tmp/env-secrets \
+              --project=${{ env.PROJECT_ID }}
+          else
+            echo "Creating new secret..."
+            gcloud secrets create ${{ env.SECRET_NAME }} \
+              --data-file=/tmp/env-secrets \
+              --replication-policy=automatic \
+              --project=${{ env.PROJECT_ID }}
+          fi
+          
+          rm /tmp/env-secrets
+
+      - name: Build and Push Container
+        run: |
+          docker build -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/vericall/${{ env.SERVICE_NAME }}:${{ github.sha }} .
+          docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/vericall/${{ env.SERVICE_NAME }}:${{ github.sha }}
+
+      # Cloud Run にデプロイ（Secret Manager から読み込み）
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --image ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/vericall/${{ env.SERVICE_NAME }}:${{ github.sha }} \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --port 8080 \
+            --memory 512Mi \
+            --cpu 1 \
+            --min-instances 0 \
+            --max-instances 10 \
+            --set-secrets="/app/.env=${{ env.SECRET_NAME }}:latest"
+
+      - name: Show URL
+        run: |
+          URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region ${{ env.REGION }} --format 'value(status.url)')
+          echo "🚀 Deployed to: $URL"
+          echo "📡 Twilio Webhook: $URL/phone/incoming"
