@@ -37,16 +37,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 # Secret Manager からマウントされる .env を読み込むスクリプト
-COPY --chown=nextjs:nodejs <<'EOF' /app/entrypoint.sh
-#!/bin/sh
-# Secret Manager からマウントされた .env があれば読み込む
-if [ -f /app/.env ]; then
-  set -a
-  . /app/.env
-  set +a
-fi
-exec node server.js
-EOF
+COPY --chown=nextjs:nodejs docker/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
 USER nextjs
