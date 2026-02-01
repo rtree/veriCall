@@ -13,9 +13,9 @@
     "play:twilio": "ts-node --esm playground/twilio/test-call.ts"
   },
   "dependencies": {
-    "next": "15.5.9",
-    "react": "19.0.1",
-    "react-dom": "19.0.1",
+    "next": "16.1.6",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
     "twilio": "^5.4.0",
     "viem": "^2.21.0"
   },
