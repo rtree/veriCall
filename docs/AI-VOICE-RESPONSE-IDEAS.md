@@ -208,16 +208,127 @@ lib/
 │   ├── gemini.ts              # Gemini会話 + 判定
 │   ├── text-to-speech.ts      # TTS処理
 │   └── audio-utils.ts         # μ-law変換など
+│
+├── vlayer/
+│   ├── fairness-proof.ts      # 公平性証明生成
+│   ├── decision-logger.ts     # 判定ログ記録
+│   └── contracts/
+│       └── CallDecisionLog.sol # 判定記録コントラクト
+```
+
+## スマートコントラクト（案）
+
+```solidity
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+contract CallDecisionLog {
+    bytes32 public immutable PROMPT_HASH;  // 判定ロジックのハッシュ（不変）
+    
+    enum Decision { BLOCK, TRANSFER, MESSAGE }
+    
+    struct CallRecord {
+        bytes32 inputHash;      // 会話内容のハッシュ
+        bytes32 callerHash;     // 電話番号のハッシュ（プライバシー保護）
+        Decision decision;      // 判定結果
+        uint256 timestamp;      // 判定時刻
+    }
+    
+    CallRecord[] public records;
+    
+    event CallDecisionRecorded(
+        uint256 indexed recordId,
+        bytes32 inputHash,
+        Decision decision,
+        uint256 timestamp
+    );
+    
+    constructor(bytes32 _promptHash) {
+        PROMPT_HASH = _promptHash;  // デプロイ時に固定
+    }
+    
+    function recordDecision(
+        bytes32 inputHash,
+        bytes32 callerHash,
+        Decision decision
+    ) external returns (uint256) {
+        uint256 recordId = records.length;
+        records.push(CallRecord({
+            inputHash: inputHash,
+            callerHash: callerHash,
+            decision: decision,
+            timestamp: block.timestamp
+        }));
+        
+        emit CallDecisionRecorded(recordId, inputHash, decision, block.timestamp);
+        return recordId;
+    }
+    
+    // 公平性の検証: 全レコードが同じPROMPT_HASHを使用
+    function verifyFairness() external view returns (bool, bytes32) {
+        return (true, PROMPT_HASH);
+    }
+    
+    function getRecordCount() external view returns (uint256) {
+        return records.length;
+    }
+}
 ```
 
 ## 次のアクション
 
+### Phase 1: 音声AI基盤
 - [ ] GCP API有効化 (Speech-to-Text, Text-to-Speech, Vertex AI)
 - [ ] Gemini判定プロンプト作成
 - [ ] WebSocketエンドポイント作成 (`/phone/stream`)
 - [ ] 営業電話判定ロジック実装
 - [ ] 転送/ブロック/伝言の分岐処理
-- [ ] Vlayer証明統合
+
+### Phase 2: Vlayer公平性証明
+- [ ] CallDecisionLogコントラクト作成
+- [ ] システムプロンプトのハッシュ計算・固定
+- [ ] 判定ごとにオンチェーン記録
+- [ ] Vlayer Web Proof統合（Gemini API証明）
+- [ ] 公平性検証UI作成
+
+## 公平性証明のフロー
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         判定 → 証明フロー                            │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  1. 着信時                                                          │
+│     ┌──────────┐                                                    │
+│     │ 電話着信 │                                                    │
+│     └────┬─────┘                                                    │
+│          ▼                                                          │
+│  2. AI判定                                                          │
+│     ┌──────────────────────────────────────────┐                    │
+│     │ システムプロンプト (PROMPT_HASH: 0xabc)   │ ← 固定値          │
+│     │ + 会話内容 (inputHash: 0xdef)            │                    │
+│     │ → Gemini API → 判定結果                  │                    │
+│     └────┬─────────────────────────────────────┘                    │
+│          ▼                                                          │
+│  3. オンチェーン記録                                                 │
+│     ┌──────────────────────────────────────────┐                    │
+│     │ CallDecisionLog.recordDecision(          │                    │
+│     │   inputHash,                             │                    │
+│     │   callerHash,                            │                    │
+│     │   Decision.BLOCK                         │                    │
+│     │ )                                        │                    │
+│     └────┬─────────────────────────────────────┘                    │
+│          ▼                                                          │
+│  4. 検証可能                                                        │
+│     ┌──────────────────────────────────────────┐                    │
+│     │ 誰でも確認できる:                         │                    │
+│     │ ✅ 全レコードが同じPROMPT_HASH           │                    │
+│     │ ✅ 判定結果の分布（BLOCK率など）          │                    │
+│     │ ✅ 特定callerHashへの偏りなし            │                    │
+│     └──────────────────────────────────────────┘                    │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
 - [ ] μ-law ↔ Linear16 変換実装
 - [ ] STT/TTS/Gemini統合
 - [ ] 会話ログ保存
