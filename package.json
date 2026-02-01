@@ -7,7 +7,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "play": "ts-node --esm",
+    "play:vlayer": "ts-node --esm playground/vlayer/01-hello-vlayer.ts",
+    "play:twilio": "ts-node --esm playground/twilio/test-call.ts"
   },
   "dependencies": {
     "next": "15.5.7",
@@ -20,6 +23,8 @@
     "@types/node": "^20.11.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "dotenv": "^16.4.5",
+    "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
   },
   "engines": {
