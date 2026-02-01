@@ -1,0 +1,76 @@
+import { twilioConfig, forwardingConfig, serverConfig } from '@/lib/config';
+import { createVoiceResponse } from './twilio';
+import { Decision } from './types';
+
+/**
+ * TwiML Builder
+ * Twilio用のXMLレスポンスを構築
+ */
+
+type VoiceResponse = ReturnType<typeof createVoiceResponse>;
+
+/** 判断に応じたTwiMLを生成 */
+export function buildResponse(decision: Decision): string {
+  const twiml = createVoiceResponse();
+
+  switch (decision.action) {
+    case 'forward':
+      sayAndDial(twiml, decision.forwardTo!);
+      break;
+    case 'reject':
+      sayAndHangup(twiml);
+      break;
+    case 'voicemail':
+      sayAndRecord(twiml);
+      break;
+  }
+
+  return twiml.toString();
+}
+
+/** 転送 */
+function sayAndDial(twiml: VoiceResponse, destination: string) {
+  twiml.say(
+    { voice: 'Polly.Amy', language: 'en-US' },
+    'Please hold while we connect your call.'
+  );
+
+  const dial = twiml.dial({
+    callerId: twilioConfig.phoneNumber,
+    timeout: forwardingConfig.timeout,
+    action: `${serverConfig.baseUrl}/phone/status`,
+  });
+  dial.number(destination);
+}
+
+/** 拒否 */
+function sayAndHangup(twiml: VoiceResponse) {
+  twiml.say(
+    { voice: 'Polly.Amy', language: 'en-US' },
+    'Sorry, we are unable to take your call at this time. Goodbye.'
+  );
+  twiml.hangup();
+}
+
+/** 留守電 */
+function sayAndRecord(twiml: VoiceResponse) {
+  twiml.say(
+    { voice: 'Polly.Amy', language: 'en-US' },
+    'No one is available. Please leave a message after the beep.'
+  );
+  twiml.record({
+    maxLength: 120,
+    transcribe: true,
+  });
+}
+
+/** 転送失敗時のフォールバック */
+export function buildVoicemailFallback(): string {
+  const twiml = createVoiceResponse();
+  twiml.say(
+    { voice: 'Polly.Amy', language: 'en-US' },
+    'The person you are trying to reach is unavailable. Please leave a message.'
+  );
+  twiml.record({ maxLength: 120, transcribe: true });
+  return twiml.toString();
+}
