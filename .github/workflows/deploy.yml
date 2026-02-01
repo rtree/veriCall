@@ -61,15 +61,15 @@ jobs:
           }
           
           echo "🔐 Secret Manager にシークレットを同期中..."
-          sync_secret "twilio-account-sid" "${{ secrets.TWILIO_ACCOUNT_SID }}"
-          sync_secret "twilio-auth-token" "${{ secrets.TWILIO_AUTH_TOKEN }}"
-          sync_secret "twilio-phone-number" "${{ secrets.TWILIO_PHONE_NUMBER }}"
-          sync_secret "destination-phone-number" "${{ secrets.DESTINATION_PHONE_NUMBER }}"
-          sync_secret "forward-timeout" "${{ secrets.FORWARD_TIMEOUT }}"
-          sync_secret "whitelist-numbers" "${{ secrets.WHITELIST_NUMBERS }}"
-          sync_secret "sendgrid-api-key" "${{ secrets.SENDGRID_API_KEY }}"
-          sync_secret "notification-email" "${{ secrets.NOTIFICATION_EMAIL }}"
-          sync_secret "from-email" "${{ secrets.FROM_EMAIL }}"
+          sync_secret "TWILIO_ACCOUNT_SID" "${{ secrets.TWILIO_ACCOUNT_SID }}"
+          sync_secret "TWILIO_AUTH_TOKEN" "${{ secrets.TWILIO_AUTH_TOKEN }}"
+          sync_secret "TWILIO_PHONE_NUMBER" "${{ secrets.TWILIO_PHONE_NUMBER }}"
+          sync_secret "DESTINATION_PHONE_NUMBER" "${{ secrets.DESTINATION_PHONE_NUMBER }}"
+          sync_secret "FORWARD_TIMEOUT" "${{ secrets.FORWARD_TIMEOUT }}"
+          sync_secret "WHITELIST_NUMBERS" "${{ secrets.WHITELIST_NUMBERS }}"
+          sync_secret "SENDGRID_API_KEY" "${{ secrets.SENDGRID_API_KEY }}"
+          sync_secret "NOTIFICATION_EMAIL" "${{ secrets.NOTIFICATION_EMAIL }}"
+          sync_secret "FROM_EMAIL" "${{ secrets.FROM_EMAIL }}"
           echo "✅ シークレット同期完了"
 
       - name: Set up Docker Buildx
@@ -100,7 +100,7 @@ jobs:
             --min-instances 0 \
             --max-instances 10 \
             --set-env-vars="NODE_ENV=production" \
-            --set-secrets="TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_AUTH_TOKEN=twilio-auth-token:latest,TWILIO_PHONE_NUMBER=twilio-phone-number:latest,DESTINATION_PHONE_NUMBER=destination-phone-number:latest,FORWARD_TIMEOUT=forward-timeout:latest,WHITELIST_NUMBERS=whitelist-numbers:latest,SENDGRID_API_KEY=sendgrid-api-key:latest,NOTIFICATION_EMAIL=notification-email:latest,FROM_EMAIL=from-email:latest" \
+            --set-secrets="TWILIO_ACCOUNT_SID=TWILIO_ACCOUNT_SID:latest,TWILIO_AUTH_TOKEN=TWILIO_AUTH_TOKEN:latest,TWILIO_PHONE_NUMBER=TWILIO_PHONE_NUMBER:latest,DESTINATION_PHONE_NUMBER=DESTINATION_PHONE_NUMBER:latest,FORWARD_TIMEOUT=FORWARD_TIMEOUT:latest,WHITELIST_NUMBERS=WHITELIST_NUMBERS:latest,SENDGRID_API_KEY=SENDGRID_API_KEY:latest,NOTIFICATION_EMAIL=NOTIFICATION_EMAIL:latest,FROM_EMAIL=FROM_EMAIL:latest" \
             --service-account ${{ env.PROJECT_NUMBER }}-compute@developer.gserviceaccount.com
           
           URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region ${{ env.REGION }} --format='value(status.url)')
