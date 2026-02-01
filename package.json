@@ -1,0 +1,28 @@
+{
+  "name": "vericall",
+  "version": "1.0.0",
+  "description": "AI-powered phone receptionist with on-chain verification via Vlayer",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "15.5.7",
+    "react": "19.0.1",
+    "react-dom": "19.0.1",
+    "twilio": "^5.4.0",
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.17.0"
+  }
+}
