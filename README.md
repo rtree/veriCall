@@ -12,130 +12,227 @@ VeriCall is an AI-powered phone receptionist system that handles incoming calls 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │   Incoming      │     │   VeriCall      │     │   Destination   │
-│   Call          │────▶│   AI Engine     │────▶│   Phone         │
-│   (Twilio)      │     │                 │     │   (Forward)     │
+│   Call          │────▶│   (Next.js on   │────▶│   Phone         │
+│   (Twilio)      │     │   Cloud Run)    │     │   (Forward)     │
 └─────────────────┘     └────────┬────────┘     └─────────────────┘
                                  │
-                                 ▼
-                        ┌─────────────────┐
-                        │   Vlayer        │
-                        │   (On-chain     │
-                        │    Witness)     │
-                        └─────────────────┘
+                        ┌────────┴────────┐
+                        ▼                 ▼
+               ┌─────────────┐    ┌─────────────┐
+               │   Vlayer    │    │   Vlayer    │
+               │   Web Proof │───▶│   ZK Proof  │
+               │   Server    │    │   Server    │
+               └─────────────┘    └──────┬──────┘
+                                         │
+                                         ▼
+                                  ┌─────────────┐
+                                  │  Base Chain │
+                                  │  (On-chain) │
+                                  └─────────────┘
+```
+
+## Tech Stack
+
+| Component | Technology | Version |
+|-----------|------------|---------|
+| Framework | Next.js | 15.5.7 (React2Shell patched) |
+| Runtime | React | 19.0.1 (CVE-2025-55182 patched) |
+| Phone Gateway | Twilio Programmable Voice | - |
+| Hosting | GCP Cloud Run | - |
+| Verification | Vlayer (Web Proofs + ZK Proofs) | - |
+| Blockchain | Base Sepolia | - |
+
+## Project Structure
+
+```
+veriCall/
+├── app/
+│   ├── api/
+│   │   ├── webhook/
+│   │   │   ├── incoming/route.ts   # Twilio incoming call webhook
+│   │   │   └── status/route.ts     # Call status updates
+│   │   ├── calls/route.ts          # List call logs
+│   │   ├── verify/[callId]/route.ts # Verify on-chain decision
+│   │   └── health/route.ts         # Health check for Cloud Run
+│   ├── layout.tsx
+│   ├── page.tsx
+│   └── globals.css
+├── lib/
+│   ├── config.ts          # Environment configuration
+│   ├── types.ts           # TypeScript types
+│   ├── twilio.ts          # Twilio client utilities
+│   ├── vlayer.ts          # Vlayer Web/ZK proof integration
+│   └── decision-logger.ts # Decision logging service
+├── Dockerfile             # Cloud Run container
+├── next.config.mjs
+├── package.json
+└── tsconfig.json
 ```
 
 ## Core Components
 
 ### 1. Twilio Phone Gateway
 - **US Phone Number**: Purchased via Twilio as the company's public-facing number
-- **Webhook Integration**: Incoming calls trigger VeriCall AI via Twilio webhooks
+- **Webhook Integration**: Incoming calls trigger VeriCall via Twilio webhooks
 - **Call Control**: Programmable call forwarding, hold, and rejection
 
-### 2. AI Decision Engine
-- **Caller Identification**: Analyze caller ID, voice patterns, and conversation context
-- **Intent Classification**: Determine if caller is:
-  - Known customer/client
-  - Team member/colleague
-  - Vendor/partner
-  - Unknown/spam
-- **Decision Making**: AI decides whether to:
-  - Forward to destination number
-  - Take a message
-  - Reject the call
+### 2. Decision Engine
+- **Whitelist Check**: MVP uses simple phone number whitelist
+- **Confidence Scoring**: Track decision confidence for audit
+- **Future: AI Integration**: LLM-based caller verification
 
 ### 3. On-chain Verification (Vlayer)
-- **Decision Logging**: Store call metadata and decision rationale on-chain
-- **Verifiable Proofs**: Generate cryptographic proofs for each decision
+- **Web Proofs**: Generate cryptographic proofs of decision data via TLSNotary
+- **ZK Proofs**: Compress web proofs into succinct zero-knowledge proofs
+- **On-chain Storage**: Store ZK proofs on Base chain for verification
 - **Audit Trail**: Immutable record of all call handling decisions
-- **Dispute Resolution**: Enable third-party verification of AI decisions
 
 ## Data Flow
 
 1. **Incoming Call** → Twilio receives call on US number
-2. **Webhook Trigger** → Twilio sends call data to VeriCall backend
-3. **AI Processing** → Analyze caller and determine action
-4. **Decision Made** → Forward, reject, or take message
-5. **On-chain Log** → Record decision + reasoning via Vlayer
-6. **Action Executed** → Twilio performs the decided action
+2. **Webhook Trigger** → Twilio POSTs to `/api/webhook/incoming`
+3. **Decision Made** → Check whitelist, determine action
+4. **TwiML Response** → Return call instructions to Twilio
+5. **Async Proof Generation** → Generate Vlayer Web Proof
+6. **ZK Compression** → Compress to ZK Proof via Vlayer ZK Prover
+7. **On-chain Log** → Store proof on Base chain
 
-## Decision Logic Schema
+## API Endpoints
 
-```json
-{
-  "callId": "uuid",
-  "timestamp": "ISO8601",
-  "callerNumber": "+1XXXXXXXXXX",
-  "callerIdentity": {
-    "known": true,
-    "type": "customer|colleague|vendor|unknown",
-    "confidence": 0.95
-  },
-  "decision": {
-    "action": "forward|reject|voicemail",
-    "reason": "Verified customer from CRM database",
-    "forwardTo": "+1YYYYYYYYYY"
-  },
-  "vlayerProof": {
-    "txHash": "0x...",
-    "verified": true
-  }
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/webhook/incoming` | Twilio incoming call webhook |
+| POST | `/api/webhook/status` | Call status updates |
+| GET | `/api/calls` | List all call decision logs |
+| GET | `/api/verify/[callId]` | Verify on-chain decision |
+| GET | `/api/health` | Health check for Cloud Run |
+
+## Decision Log Schema
+
+```typescript
+interface DecisionLog {
+  callId: string;
+  timestamp: string;
+  callerNumber: string;
+  callerIdentity: {
+    known: boolean;
+    type: 'customer' | 'colleague' | 'vendor' | 'unknown';
+    confidence: number;
+  };
+  decision: {
+    action: 'forward' | 'reject' | 'voicemail';
+    reason: string;
+    forwardTo?: string;
+  };
+  vlayerProof?: {
+    webProofId?: string;
+    zkProofHash?: string;
+    txHash?: string;
+    verified: boolean;
+  };
 }
 ```
 
-## Tech Stack
+## Getting Started
 
-| Component | Technology |
-|-----------|------------|
-| Phone Gateway | Twilio Programmable Voice |
-| Backend | Node.js / Python |
-| AI Engine | OpenAI GPT-4 / Claude |
-| Blockchain | Ethereum / Base |
-| Verification | Vlayer |
-| Database | PostgreSQL (off-chain cache) |
+### Prerequisites
+
+- Node.js 18.17+
+- Twilio Account with US phone number
+- Vlayer API key
+- GCP account for Cloud Run
+
+### Local Development
+
+```bash
+# Install dependencies
+npm install
+
+# Copy environment variables
+cp .env.example .env.local
+# Edit .env.local with your credentials
+
+# Run development server
+npm run dev
+```
+
+### Deploy to Cloud Run
+
+```bash
+# Build and push container
+gcloud builds submit --tag gcr.io/PROJECT_ID/vericall
+
+# Deploy to Cloud Run
+gcloud run deploy vericall \
+  --image gcr.io/PROJECT_ID/vericall \
+  --platform managed \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --set-env-vars "TWILIO_ACCOUNT_SID=xxx,TWILIO_AUTH_TOKEN=xxx,..."
+```
+
+### Configure Twilio Webhook
+
+1. Go to Twilio Console → Phone Numbers
+2. Select your phone number
+3. Set Voice webhook URL to: `https://YOUR_CLOUD_RUN_URL/api/webhook/incoming`
+
+## Environment Variables
+
+```bash
+# Twilio Configuration
+TWILIO_ACCOUNT_SID=your_account_sid
+TWILIO_AUTH_TOKEN=your_auth_token
+TWILIO_PHONE_NUMBER=+1XXXXXXXXXX
+
+# Call Forwarding
+DESTINATION_PHONE_NUMBER=+1YYYYYYYYYY
+FORWARD_TIMEOUT=30
+WHITELIST_NUMBERS=+1111111111,+1222222222
+
+# Vlayer Configuration
+VLAYER_API_KEY=your_vlayer_api_key
+VLAYER_WEB_PROVER_URL=https://web-prover.vlayer.xyz
+VLAYER_ZK_PROVER_URL=https://zk-prover.vlayer.xyz
+
+# Blockchain Configuration
+ETHEREUM_RPC_URL=https://sepolia.base.org
+CHAIN_ID=84532
+
+# Server Configuration
+NEXT_PUBLIC_BASE_URL=https://your-cloud-run-url.run.app
+```
 
 ## MVP Milestones
 
-### Phase 1: Basic Call Handling
-- [ ] Set up Twilio account with US number
-- [ ] Implement webhook endpoint
-- [ ] Basic call forwarding logic
+### Phase 1: Basic Call Handling ✅
+- [x] Set up Next.js 15.5.7 project
+- [x] Implement Twilio webhook endpoints
+- [x] Basic call forwarding logic
+- [x] Cloud Run deployment configuration
 
-### Phase 2: AI Integration
+### Phase 2: Vlayer Integration 🚧
+- [x] Vlayer Web Proof integration
+- [x] Vlayer ZK Proof compression
+- [ ] On-chain proof submission
+- [ ] Smart contract deployment
+
+### Phase 3: AI Integration
 - [ ] Integrate LLM for conversation
 - [ ] Implement caller classification
-- [ ] Decision engine with rules
-
-### Phase 3: On-chain Verification
-- [ ] Integrate Vlayer SDK
-- [ ] Design decision logging schema
-- [ ] Implement proof generation
-- [ ] Deploy smart contracts
+- [ ] Voice-based verification
 
 ### Phase 4: Production Ready
 - [ ] Security hardening
 - [ ] Monitoring & alerting
 - [ ] Admin dashboard
 
-## API Endpoints (MVP)
+## Security Notes
 
-```
-POST /webhook/incoming    - Twilio incoming call webhook
-POST /webhook/status      - Call status updates
-GET  /calls/:id           - Get call details
-GET  /verify/:txHash      - Verify on-chain decision
-```
-
-## Environment Variables
-
-```
-TWILIO_ACCOUNT_SID=
-TWILIO_AUTH_TOKEN=
-TWILIO_PHONE_NUMBER=
-DESTINATION_PHONE_NUMBER=
-OPENAI_API_KEY=
-VLAYER_API_KEY=
-ETHEREUM_RPC_URL=
-```
+- **React2Shell (CVE-2025-55182)**: Using patched versions (Next.js 15.5.7, React 19.0.1)
+- **Twilio Signature Validation**: Enabled in production
+- **Phone Number Privacy**: Caller numbers are hashed before on-chain storage
+- **ZK Proofs**: Decision logic is verifiable without revealing raw data
 
 ## License
 
