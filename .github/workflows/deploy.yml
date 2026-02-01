@@ -49,11 +49,13 @@ jobs:
               echo "⚠️ $name: 値が空のためスキップ"
               return
             fi
+            # 改行を除去して保存
+            local clean_value=$(printf '%s' "$value" | tr -d '\n\r')
             if gcloud secrets describe "$name" --project=${{ env.PROJECT_ID }} > /dev/null 2>&1; then
-              echo -n "$value" | gcloud secrets versions add "$name" --data-file=- --project=${{ env.PROJECT_ID }}
+              printf '%s' "$clean_value" | gcloud secrets versions add "$name" --data-file=- --project=${{ env.PROJECT_ID }}
               echo "✅ $name: 更新"
             else
-              echo -n "$value" | gcloud secrets create "$name" --data-file=- --project=${{ env.PROJECT_ID }}
+              printf '%s' "$clean_value" | gcloud secrets create "$name" --data-file=- --project=${{ env.PROJECT_ID }}
               echo "✅ $name: 作成"
             fi
           }
