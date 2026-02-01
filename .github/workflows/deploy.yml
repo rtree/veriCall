@@ -7,11 +7,11 @@ on:
       - main
 
 env:
-  PROJECT_ID: ethglobal-479011
-  REGION: us-central1
-  SERVICE_NAME: vericall-ded916a01840
-  SECRET_NAME: vericall-env-caa4031fec2f
-  REGISTRY: us-central1-docker.pkg.dev
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  PROJECT_NUMBER: ${{ secrets.GCP_PROJECT_NUMBER }}
+  REGION: ${{ secrets.GCP_REGION }}
+  SERVICE_NAME: ${{ secrets.GCP_SERVICE_NAME }}
+  REPOSITORY: ${{ secrets.GCP_REPOSITORY }}
 
 jobs:
   deploy:
@@ -26,7 +26,6 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Google Auth
-        id: auth
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
@@ -40,50 +39,56 @@ jobs:
       - name: Configure Docker
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
 
-      # GitHub Secrets → GCP Secret Manager
-      - name: Update Secret Manager
+      # GitHub Secrets → GCP Secret Manager (個別シークレットとして)
+      - name: Sync Secrets to Secret Manager
         run: |
-          # 環境変数ファイルを作成
-          cat << 'EOF' > /tmp/env-secrets
-          TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}
-          TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}
-          TWILIO_PHONE_NUMBER=${{ secrets.TWILIO_PHONE_NUMBER }}
-          DESTINATION_PHONE_NUMBER=${{ secrets.DESTINATION_PHONE_NUMBER }}
-          FORWARD_TIMEOUT=${{ secrets.FORWARD_TIMEOUT }}
-          WHITELIST_NUMBERS=${{ secrets.WHITELIST_NUMBERS }}
-          VLAYER_API_KEY=${{ secrets.VLAYER_API_KEY }}
-          VLAYER_WEB_PROVER_URL=${{ secrets.VLAYER_WEB_PROVER_URL }}
-          VLAYER_ZK_PROVER_URL=${{ secrets.VLAYER_ZK_PROVER_URL }}
-          NEXT_PUBLIC_BASE_URL=${{ secrets.NEXT_PUBLIC_BASE_URL }}
-          NODE_ENV=production
-          EOF
-
-          # Secret が存在するか確認し、なければ作成
-          if gcloud secrets describe ${{ env.SECRET_NAME }} --project=${{ env.PROJECT_ID }} > /dev/null 2>&1; then
-            echo "Updating existing secret..."
-            gcloud secrets versions add ${{ env.SECRET_NAME }} \
-              --data-file=/tmp/env-secrets \
-              --project=${{ env.PROJECT_ID }}
-          else
-            echo "Creating new secret..."
-            gcloud secrets create ${{ env.SECRET_NAME }} \
-              --data-file=/tmp/env-secrets \
-              --replication-policy=automatic \
-              --project=${{ env.PROJECT_ID }}
-          fi
+          sync_secret() {
+            local name=$1
+            local value=$2
+            if [ -z "$value" ]; then
+              echo "⚠️ $name: 値が空のためスキップ"
+              return
+            fi
+            if gcloud secrets describe "$name" --project=${{ env.PROJECT_ID }} > /dev/null 2>&1; then
+              echo -n "$value" | gcloud secrets versions add "$name" --data-file=- --project=${{ env.PROJECT_ID }}
+              echo "✅ $name: 更新"
+            else
+              echo -n "$value" | gcloud secrets create "$name" --data-file=- --project=${{ env.PROJECT_ID }}
+              echo "✅ $name: 作成"
+            fi
+          }
           
-          rm /tmp/env-secrets
+          echo "🔐 Secret Manager にシークレットを同期中..."
+          sync_secret "twilio-account-sid" "${{ secrets.TWILIO_ACCOUNT_SID }}"
+          sync_secret "twilio-auth-token" "${{ secrets.TWILIO_AUTH_TOKEN }}"
+          sync_secret "twilio-phone-number" "${{ secrets.TWILIO_PHONE_NUMBER }}"
+          sync_secret "destination-phone-number" "${{ secrets.DESTINATION_PHONE_NUMBER }}"
+          sync_secret "forward-timeout" "${{ secrets.FORWARD_TIMEOUT }}"
+          sync_secret "whitelist-numbers" "${{ secrets.WHITELIST_NUMBERS }}"
+          sync_secret "sendgrid-api-key" "${{ secrets.SENDGRID_API_KEY }}"
+          sync_secret "notification-email" "${{ secrets.NOTIFICATION_EMAIL }}"
+          sync_secret "from-email" "${{ secrets.FROM_EMAIL }}"
+          echo "✅ シークレット同期完了"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Build and Push Container
-        run: |
-          docker build -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/vericall/${{ env.SERVICE_NAME }}:${{ github.sha }} .
-          docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/vericall/${{ env.SERVICE_NAME }}:${{ github.sha }}
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:latest
+          cache-from: type=registry,ref=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:buildcache,mode=max
 
-      # Cloud Run にデプロイ（Secret Manager から読み込み）
       - name: Deploy to Cloud Run
+        id: deploy
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
-            --image ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/vericall/${{ env.SERVICE_NAME }}:${{ github.sha }} \
+            --image ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
             --region ${{ env.REGION }} \
             --platform managed \
             --allow-unauthenticated \
@@ -92,10 +97,25 @@ jobs:
             --cpu 1 \
             --min-instances 0 \
             --max-instances 10 \
-            --set-secrets="/app/.env=${{ env.SECRET_NAME }}:latest"
-
-      - name: Show URL
-        run: |
-          URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region ${{ env.REGION }} --format 'value(status.url)')
+            --set-env-vars="NODE_ENV=production" \
+            --set-secrets="TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_AUTH_TOKEN=twilio-auth-token:latest,TWILIO_PHONE_NUMBER=twilio-phone-number:latest,DESTINATION_PHONE_NUMBER=destination-phone-number:latest,FORWARD_TIMEOUT=forward-timeout:latest,WHITELIST_NUMBERS=whitelist-numbers:latest,SENDGRID_API_KEY=sendgrid-api-key:latest,NOTIFICATION_EMAIL=notification-email:latest,FROM_EMAIL=from-email:latest" \
+            --service-account ${{ env.PROJECT_NUMBER }}-compute@developer.gserviceaccount.com
+          
+          URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region ${{ env.REGION }} --format='value(status.url)')
+          echo "url=$URL" >> $GITHUB_OUTPUT
           echo "🚀 Deployed to: $URL"
-          echo "📡 Twilio Webhook: $URL/phone/incoming"
+
+      - name: Show Output
+        run: |
+          echo "🚀 Deployment complete!"
+          echo "   URL: ${{ steps.deploy.outputs.url }}"
+          echo "   Twilio Webhook: ${{ steps.deploy.outputs.url }}/phone/incoming"
+
+      - name: Get Logs on Failure
+        if: failure()
+        run: |
+          echo "=== Fetching Cloud Run logs ==="
+          gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=${{ env.SERVICE_NAME }}" \
+            --limit 50 \
+            --format="table(timestamp, textPayload)" \
+            --freshness=10m || echo "Failed to fetch logs"
