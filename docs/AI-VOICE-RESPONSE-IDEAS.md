@@ -10,18 +10,16 @@
 ## 基本フロー
 
 ```
-着信 → AI受付（用件確認）
+着信 → AI受付（英語で用件確認）
          │
-         ├─ 🚫 営業電話と判定 → 丁寧にお断り → 切断
-         │     「申し訳ございませんが、営業のお電話は
-         │      お受けしておりません」
+         ├─ 🚫 営業電話と判定 → 丁寧にお断り → 切断 → 記録保存
+         │     "I'm sorry, we don't accept sales calls.
+         │      Thank you for your understanding."
          │
-         ├─ ✅ 正当な用件 → オーナーに転送
-         │     「少々お待ちください。お繋ぎいたします」
-         │
-         └─ ❓ 判断できない → 伝言を預かる → メール通知
-               「折り返しご連絡いたしますので、
-                ご用件とお名前をお願いします」
+         └─ ✅ 正当な用件 → 用件を聞く → 切断 → メール送信
+               "Thank you for calling. May I ask your name
+                and the purpose of your call?"
+               → 文字起こしをオーナーにメール
 ```
 
 ## AI判定ロジック
@@ -130,15 +128,11 @@ if (farewellPhrases.some(phrase => response.includes(phrase))) {
 ## 機能案
 
 ### 1. 営業電話フィルター（MVP）
-- AIが用件を確認
-- 営業電話を判定してブロック
-- 正当な用件は転送
+- AIが用件を確認（**会話は英語**）
+- 営業電話を判定してブロック → 記録だけ残す
+- 正当な用件 → 文字起こしをメール送信
 
-### 2. 伝言モード
-- 転送できない場合に伝言を預かる
-- 文字起こしをメール送信
-
-### 3. ホワイトリスト併用
+### 2. ホワイトリスト併用（将来）
 - 登録済み番号は即転送（AIスキップ）
 - 未登録のみAI判定
 
@@ -176,20 +170,26 @@ if (farewellPhrases.some(phrase => response.includes(phrase))) {
 ## システムプロンプト（案）
 
 ```
-あなたは電話受付AIです。発信者の用件を確認し、以下を判定してください：
+You are a phone receptionist AI. Your job is to screen calls and determine if they are sales/spam calls.
 
-【営業電話の特徴】
-- サービス提案、ご案内、お得情報
-- 具体的な用件がない
-- 「ご担当者様」への取り次ぎ要求
-- 不動産、保険、回線、コスト削減系
+【Sales Call Indicators - BLOCK】
+- Service proposals, offers, deals
+- No specific purpose for calling
+- Asking for "the person in charge" or "decision maker"
+- Real estate, insurance, telecom, cost reduction
 
-【応答パターン】
-1. 営業と判定 → "申し訳ございませんが、営業のお電話はお受けしておりません。失礼いたします。" → [BLOCK]
-2. 正当な用件 → "少々お待ちください。お繋ぎいたします。" → [TRANSFER]
-3. 判断できない → "折り返しご連絡いたしますので、ご用件とお名前をお願いできますか？" → [MESSAGE]
+【Legitimate Call Indicators - RECORD】
+- Has a specific purpose
+- Knows who they want to reach
+- Business partner, customer, personal contact
+- Inquiry, appointment, returning a call
 
-応答は1〜2文で簡潔に。
+【Response Patterns】
+1. Sales call → "I'm sorry, we don't accept sales calls. Thank you for your understanding. Goodbye." → [BLOCK]
+2. Legitimate → "Thank you for calling. May I have your name and the purpose of your call?" → (record) → "Thank you. We will get back to you shortly. Goodbye." → [RECORD]
+3. Unclear → Ask one clarifying question, then decide.
+
+Keep responses to 1-2 sentences. Be polite but efficient.
 ```
 
 ## 実装ファイル構成（案）
@@ -198,8 +198,7 @@ if (farewellPhrases.some(phrase => response.includes(phrase))) {
 app/
 ├── phone/
 │   ├── incoming/route.ts      # 着信 → AI Stream開始
-│   ├── stream/route.ts        # WebSocket音声ストリーム
-│   └── transfer/route.ts      # AI判定後の転送処理
+│   └── stream/route.ts        # WebSocket音声ストリーム
 │
 lib/
 ├── voice-ai/
@@ -279,10 +278,10 @@ contract CallDecisionLog {
 
 ### Phase 1: 音声AI基盤
 - [ ] GCP API有効化 (Speech-to-Text, Text-to-Speech, Vertex AI)
-- [ ] Gemini判定プロンプト作成
+- [ ] Gemini判定プロンプト作成（英語）
 - [ ] WebSocketエンドポイント作成 (`/phone/stream`)
 - [ ] 営業電話判定ロジック実装
-- [ ] 転送/ブロック/伝言の分岐処理
+- [ ] 営業→ブロック（記録保存）、正当→メール送信
 
 ### Phase 2: Vlayer公平性証明
 - [ ] CallDecisionLogコントラクト作成
