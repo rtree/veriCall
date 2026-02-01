@@ -13,6 +13,7 @@
     "play:twilio": "ts-node --esm playground/twilio/test-call.ts"
   },
   "dependencies": {
+    "@sendgrid/mail": "^8.1.6",
     "next": "16.1.6",
     "react": "19.2.0",
     "react-dom": "19.2.0",

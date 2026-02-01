@@ -1,5 +1,6 @@
 import { CallRecord, Decision, CallLog } from './types';
 import { saveLog } from './store';
+import { sendCallNotification } from './email';
 
 /**
  * Phone Events
@@ -18,6 +19,16 @@ export async function onDecisionMade(call: CallRecord, decision: Decision): Prom
   saveLog(log);
 
   console.log(`✅ Decision: ${decision.action} (${decision.reason})`);
+
+  // メール通知（非同期で送信、エラーがあってもフローは止めない）
+  sendCallNotification({
+    callId: call.callSid,
+    from: call.from,
+    to: call.to,
+    action: decision.action,
+    reason: decision.reason,
+    timestamp: new Date(),
+  }).catch((err) => console.error('Email notification error:', err));
 
   // TODO: ここでVlayerを呼ぶ（後で実装）
   // await witness.createProof(log);
