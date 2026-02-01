@@ -20,6 +20,17 @@ Client ID: 4f028e97-b7c7-4a81-ade2-6b1a2917380c
 API Key: jUWXi1pVUoTHgc7MOgh5X0zMR12MHtAhtjVgMc2DM3B3Uc8WEGQAEix83VwZ
 ```
 
+**出典:** https://docs.vlayer.xyz/server-side/rest-api/prove
+
+curlコマンド例に含まれている:
+```bash
+curl -X POST https://web-prover.vlayer.xyz/api/v1/prove \
+  -H "Content-Type: application/json" \
+  -H "x-client-id: 4f028e97-b7c7-4a81-ade2-6b1a2917380c" \
+  -H "Authorization: Bearer jUWXi1pVUoTHgc7MOgh5X0zMR12MHtAhtjVgMc2DM3B3Uc8WEGQAEix83VwZ" \
+  ...
+```
+
 > ⚠️ ドキュメントには "The included credentials are for limited public use. For production use, please contact our team." と記載
 
 ## 実験結果
