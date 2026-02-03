@@ -125,6 +125,11 @@ export class VoiceAISession {
     // Convert to Linear16 for STT
     const linear16Buffer = mulawToLinear16(mulawBuffer);
 
+    // Debug: log audio receipt periodically
+    if (Date.now() - this.lastAudioTime > 1000) {
+      console.log(`[Session ${this.config.callSid}] Receiving audio (${mulawBuffer.length} bytes)`);
+    }
+
     // Update last audio time for silence detection
     this.lastAudioTime = Date.now();
 
@@ -140,6 +145,9 @@ export class VoiceAISession {
    */
   private setupSTTCallback(): void {
     this.stt.onResult(async (transcript, isFinal) => {
+      // Log interim results too for debugging
+      console.log(`[Session ${this.config.callSid}] STT: "${transcript}" (final: ${isFinal})`);
+      
       if (isFinal && transcript.trim()) {
         console.log(`[Session ${this.config.callSid}] Caller said: "${transcript}"`);
         await this.processCallerInput(transcript);
