@@ -38,6 +38,8 @@ export class SpeechToText {
   start(): void {
     if (this.isStreamActive) return;
 
+    console.log('[STT] Starting stream with config:', this.config);
+
     const request: google.cloud.speech.v1.IStreamingRecognitionConfig = {
       config: {
         encoding: 'LINEAR16' as const,
@@ -54,6 +56,7 @@ export class SpeechToText {
 
     this.recognizeStream = this.client.streamingRecognize(request);
     this.isStreamActive = true;
+    console.log('[STT] Stream created, listening for audio...');
 
     this.recognizeStream.on('data', (response: StreamingRecognizeResponse) => {
       if (!response.results || response.results.length === 0) return;

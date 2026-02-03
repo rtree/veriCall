@@ -34,7 +34,20 @@ export function buildResponse(decision: Decision, callInfo?: { from?: string; ca
 /** AI音声ストリームに接続 */
 function connectToAIStream(twiml: VoiceResponse, callInfo?: { from?: string; callSid?: string; host?: string }) {
   // Connect to WebSocket for AI screening (use host from request)
-  const host = callInfo?.host || new URL(serverConfig.baseUrl).host;
+  let host = callInfo?.host;
+  if (!host && serverConfig.baseUrl) {
+    try {
+      host = new URL(serverConfig.baseUrl).host;
+    } catch {
+      console.error('[TwiML] Invalid baseUrl:', serverConfig.baseUrl);
+    }
+  }
+  if (!host) {
+    console.error('[TwiML] No host available for WebSocket URL');
+    twiml.say({ voice: 'Polly.Amy', language: 'en-US' }, 'Sorry, there was a technical issue. Please try again later.');
+    twiml.hangup();
+    return;
+  }
   const streamUrl = `wss://${host}/stream`;
   
   const connect = twiml.connect();

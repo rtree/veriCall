@@ -70,6 +70,7 @@ jobs:
           sync_secret "SENDGRID_API_KEY" "${{ secrets.SENDGRID_API_KEY }}"
           sync_secret "NOTIFICATION_EMAIL" "${{ secrets.NOTIFICATION_EMAIL }}"
           sync_secret "FROM_EMAIL" "${{ secrets.FROM_EMAIL }}"
+          sync_secret "DEFAULT_DESTINATION" "${{ secrets.DEFAULT_DESTINATION }}"
           echo "✅ シークレット同期完了"
 
       - name: Set up Docker Buildx
@@ -100,7 +101,7 @@ jobs:
             --min-instances 0 \
             --max-instances 10 \
             --set-env-vars="NODE_ENV=production" \
-            --set-secrets="TWILIO_ACCOUNT_SID=TWILIO_ACCOUNT_SID:latest,TWILIO_AUTH_TOKEN=TWILIO_AUTH_TOKEN:latest,TWILIO_PHONE_NUMBER=TWILIO_PHONE_NUMBER:latest,DESTINATION_PHONE_NUMBER=DESTINATION_PHONE_NUMBER:latest,FORWARD_TIMEOUT=FORWARD_TIMEOUT:latest,WHITELIST_NUMBERS=WHITELIST_NUMBERS:latest,SENDGRID_API_KEY=SENDGRID_API_KEY:latest,NOTIFICATION_EMAIL=NOTIFICATION_EMAIL:latest,FROM_EMAIL=FROM_EMAIL:latest" \
+            --set-secrets="TWILIO_ACCOUNT_SID=TWILIO_ACCOUNT_SID:latest,TWILIO_AUTH_TOKEN=TWILIO_AUTH_TOKEN:latest,TWILIO_PHONE_NUMBER=TWILIO_PHONE_NUMBER:latest,DESTINATION_PHONE_NUMBER=DESTINATION_PHONE_NUMBER:latest,FORWARD_TIMEOUT=FORWARD_TIMEOUT:latest,WHITELIST_NUMBERS=WHITELIST_NUMBERS:latest,SENDGRID_API_KEY=SENDGRID_API_KEY:latest,NOTIFICATION_EMAIL=NOTIFICATION_EMAIL:latest,FROM_EMAIL=FROM_EMAIL:latest,DEFAULT_DESTINATION=DEFAULT_DESTINATION:latest" \
             --service-account ${{ env.PROJECT_NUMBER }}-compute@developer.gserviceaccount.com
           
           URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region ${{ env.REGION }} --format='value(status.url)')
