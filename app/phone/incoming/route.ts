@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
   await onDecisionMade(call, decision);
 
   // TwiMLレスポンス生成
-  const twiml = buildResponse(decision);
+  const twiml = buildResponse(decision, { from: call.from, callSid: call.callSid });
 
   return new NextResponse(twiml, {
     status: 200,
