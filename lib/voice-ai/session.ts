@@ -111,6 +111,7 @@ export class VoiceAISession {
     this.hasGreeted = true;
 
     const greeting = "Hello, this is an automated assistant. May I ask who's calling and the purpose of your call?";
+    console.log(`[Session ${this.config.callSid}] 🎤 Greeting: "${greeting}"`);
     await this.speak(greeting);
   }
 
@@ -190,6 +191,8 @@ export class VoiceAISession {
       console.warn(`[Session ${this.config.callSid}] No stream SID, cannot speak`);
       return;
     }
+
+    console.log(`[Session ${this.config.callSid}] 🔊 Speaking: "${text}"`);
 
     try {
       // Convert text to speech (returns base64 μ-law)
