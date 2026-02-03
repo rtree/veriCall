@@ -1,4 +1,3 @@
-import { forwardingConfig } from '@/lib/config';
 import { CallRecord, Decision } from './types';
 
 /**
@@ -7,10 +6,22 @@ import { CallRecord, Decision } from './types';
  * MVP: ホワイトリスト以外は全てAIスクリーニング
  */
 
+/** 
+ * ホワイトリストを毎回読み直す（Cloud Runでシークレット更新を即反映するため）
+ */
+function getWhitelist(): string[] {
+  return (process.env.WHITELIST_NUMBERS || '').split(',').filter(Boolean);
+}
+
+function getDefaultDestination(): string {
+  return process.env.DESTINATION_PHONE_NUMBER || '';
+}
+
 /** 着信を評価して判断を返す */
 export function decide(call: CallRecord): Decision {
   const { from } = call;
-  const { whitelist, defaultDestination } = forwardingConfig;
+  const whitelist = getWhitelist();
+  const defaultDestination = getDefaultDestination();
 
   // ホワイトリストチェック
   const isWhitelisted = whitelist.length > 0 && whitelist.some(pattern => {
