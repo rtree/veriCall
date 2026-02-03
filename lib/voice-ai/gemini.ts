@@ -1,7 +1,10 @@
 /**
  * Gemini AI for call screening
  * Determines if a call is sales/spam or legitimate
+ * Uses the new unified @google/genai SDK with ADC
  */
+
+import { GoogleGenAI } from '@google/genai';
 
 export type CallDecision = 'BLOCK' | 'RECORD';
 
@@ -105,24 +108,19 @@ export class GeminiChat {
   }
 
   /**
-   * Call Gemini API via Vertex AI with ADC
+   * Call Gemini API via new unified SDK with ADC
    */
   private async callGemini(
     messages: Array<{ role: string; content: string }>
   ): Promise<string> {
-    const { VertexAI } = await import('@google-cloud/vertexai');
-
-    // Use ADC - no API key needed
-    const vertexAI = new VertexAI({
+    // Use new @google/genai SDK with Vertex AI (ADC)
+    const ai = new GoogleGenAI({
+      vertexai: true,
       project: this.projectId,
       location: this.location,
     });
 
-    const model = vertexAI.getGenerativeModel({
-      model: 'gemini-2.0-flash-001',
-    });
-
-    // Convert messages to Gemini format
+    // Convert messages to chat format
     const systemInstruction = messages.find(m => m.role === 'system')?.content || '';
     const chatMessages = messages
       .filter(m => m.role !== 'system')
@@ -131,23 +129,21 @@ export class GeminiChat {
         parts: [{ text: m.content }],
       }));
 
-    const chat = model.startChat({
-      history: chatMessages.slice(0, -1) as any,
-      systemInstruction,
+    // Build contents with full history
+    const contents = chatMessages.map(m => ({
+      role: m.role as 'user' | 'model',
+      parts: m.parts,
+    }));
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents,
+      config: {
+        systemInstruction,
+      },
     });
 
-    const lastMessage = chatMessages[chatMessages.length - 1];
-    const result = await chat.sendMessage(lastMessage.parts[0].text);
-    const response = result.response;
-    
-    // Extract text from response
-    if (response.candidates && response.candidates[0]?.content?.parts) {
-      return response.candidates[0].content.parts
-        .map(part => part.text || '')
-        .join('');
-    }
-    
-    throw new Error('No response from Gemini');
+    return response.text || '';
   }
 
   /**
