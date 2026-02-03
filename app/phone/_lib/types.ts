@@ -12,11 +12,11 @@ export interface CallRecord {
   callerState?: string;
   callerCountry?: string;
   timestamp: string;
-  status: 'incoming' | 'forwarded' | 'rejected' | 'voicemail' | 'completed';
+  status: 'incoming' | 'forwarded' | 'rejected' | 'voicemail' | 'ai_screening' | 'completed';
 }
 
 /** 判断アクション */
-export type DecisionAction = 'forward' | 'reject' | 'voicemail';
+export type DecisionAction = 'forward' | 'reject' | 'voicemail' | 'ai_screen';
 
 /** ルーティング判断 */
 export interface Decision {

@@ -19,10 +19,10 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Build the application
+# Build Next.js
 RUN pnpm build
 
-# Production image, copy all the files and run next
+# Production image - use full node_modules for custom server
 FROM base AS runner
 WORKDIR /app
 
@@ -31,10 +31,14 @@ ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Copy built application
+# Copy all necessary files for custom server
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./
 COPY --from=builder /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/server.ts ./
+COPY --from=builder /app/lib ./lib
+COPY --from=builder /app/tsconfig.json ./
 
 USER nextjs
 
@@ -43,4 +47,5 @@ EXPOSE 8080
 ENV PORT=8080
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["node", "server.js"]
+# Use tsx to run TypeScript server directly
+CMD ["npx", "tsx", "server.ts"]

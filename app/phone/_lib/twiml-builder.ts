@@ -23,9 +23,23 @@ export function buildResponse(decision: Decision): string {
     case 'voicemail':
       sayAndRecord(twiml);
       break;
+    case 'ai_screen':
+      connectToAIStream(twiml);
+      break;
   }
 
   return twiml.toString();
+}
+
+/** AI音声ストリームに接続 */
+function connectToAIStream(twiml: VoiceResponse) {
+  // Connect to WebSocket for AI screening
+  const streamUrl = `wss://${new URL(serverConfig.baseUrl).host}/stream`;
+  
+  const connect = twiml.connect();
+  connect.stream({
+    url: streamUrl,
+  });
 }
 
 /** 転送 */

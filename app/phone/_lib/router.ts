@@ -4,6 +4,7 @@ import { CallRecord, Decision } from './types';
 /**
  * Call Router
  * 着信を誰に転送するか判断するロジック
+ * MVP: ホワイトリスト以外は全てAIスクリーニング
  */
 
 /** 着信を評価して判断を返す */
@@ -11,18 +12,8 @@ export function decide(call: CallRecord): Decision {
   const { from } = call;
   const { whitelist, defaultDestination } = forwardingConfig;
 
-  // ホワイトリストが空 → 全員転送
-  if (whitelist.length === 0) {
-    return {
-      action: 'forward',
-      reason: 'No whitelist configured - forwarding all calls',
-      forwardTo: defaultDestination,
-      confidence: 1.0,
-    };
-  }
-
   // ホワイトリストチェック
-  const isWhitelisted = whitelist.some(pattern => {
+  const isWhitelisted = whitelist.length > 0 && whitelist.some(pattern => {
     if (pattern.endsWith('*')) {
       return from.startsWith(pattern.slice(0, -1));
     }
@@ -30,6 +21,7 @@ export function decide(call: CallRecord): Decision {
   });
 
   if (isWhitelisted) {
+    // ホワイトリスト登録済み → 即転送
     return {
       action: 'forward',
       reason: `Caller ${maskPhone(from)} is in whitelist`,
@@ -38,12 +30,11 @@ export function decide(call: CallRecord): Decision {
     };
   }
 
-  // 未登録番号 → 一旦転送（将来はAI判断）
+  // 未登録番号 → AIスクリーニング
   return {
-    action: 'forward',
-    reason: `Unknown caller ${maskPhone(from)} - forwarding for screening`,
-    forwardTo: defaultDestination,
-    confidence: 0.5,
+    action: 'ai_screen',
+    reason: `Unknown caller ${maskPhone(from)} - routing to AI screening`,
+    confidence: 1.0,
   };
 }
 

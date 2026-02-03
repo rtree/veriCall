@@ -16,7 +16,7 @@ export interface CallNotification {
   callId: string;
   from: string;
   to: string;
-  action: 'forward' | 'reject' | 'voicemail';
+  action: 'forward' | 'reject' | 'voicemail' | 'ai_screen';
   reason: string;
   timestamp: Date;
 }
@@ -36,12 +36,14 @@ export async function sendCallNotification(notification: CallNotification): Prom
     forward: '📞',
     reject: '🚫',
     voicemail: '📝',
+    ai_screen: '🤖',
   }[notification.action];
 
   const actionText = {
     forward: '転送しました',
     reject: '拒否しました',
     voicemail: 'ボイスメールに転送しました',
+    ai_screen: 'AIスクリーニング中',
   }[notification.action];
 
   const subject = `${actionEmoji} VeriCall: ${notification.from} からの着信を${actionText}`;

@@ -3,8 +3,6 @@
  * Determines if a call is sales/spam or legitimate
  */
 
-import { VertexAI } from '@google-cloud/aiplatform';
-
 export type CallDecision = 'BLOCK' | 'RECORD';
 
 export interface GeminiResponse {
@@ -107,21 +105,22 @@ export class GeminiChat {
   }
 
   /**
-   * Call Gemini API via Vertex AI
+   * Call Gemini API via Vertex AI with ADC
    */
   private async callGemini(
     messages: Array<{ role: string; content: string }>
   ): Promise<string> {
-    // Use Google's Generative AI client directly for simplicity
-    const { GoogleGenerativeAI } = await import('@google/generative-ai');
-    
-    const apiKey = process.env.GOOGLE_AI_API_KEY;
-    if (!apiKey) {
-      throw new Error('GOOGLE_AI_API_KEY is not set');
-    }
+    const { VertexAI } = await import('@google-cloud/vertexai');
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    // Use ADC - no API key needed
+    const vertexAI = new VertexAI({
+      project: this.projectId,
+      location: this.location,
+    });
+
+    const model = vertexAI.getGenerativeModel({
+      model: 'gemini-2.0-flash-001',
+    });
 
     // Convert messages to Gemini format
     const systemInstruction = messages.find(m => m.role === 'system')?.content || '';
@@ -139,7 +138,16 @@ export class GeminiChat {
 
     const lastMessage = chatMessages[chatMessages.length - 1];
     const result = await chat.sendMessage(lastMessage.parts[0].text);
-    return result.response.text();
+    const response = result.response;
+    
+    // Extract text from response
+    if (response.candidates && response.candidates[0]?.content?.parts) {
+      return response.candidates[0].content.parts
+        .map(part => part.text || '')
+        .join('');
+    }
+    
+    throw new Error('No response from Gemini');
   }
 
   /**
