@@ -10,7 +10,7 @@ import { Decision } from './types';
 type VoiceResponse = ReturnType<typeof createVoiceResponse>;
 
 /** 判断に応じたTwiMLを生成 */
-export function buildResponse(decision: Decision, callInfo?: { from?: string; callSid?: string }): string {
+export function buildResponse(decision: Decision, callInfo?: { from?: string; callSid?: string; host?: string }): string {
   const twiml = createVoiceResponse();
 
   switch (decision.action) {
@@ -32,9 +32,10 @@ export function buildResponse(decision: Decision, callInfo?: { from?: string; ca
 }
 
 /** AI音声ストリームに接続 */
-function connectToAIStream(twiml: VoiceResponse, callInfo?: { from?: string; callSid?: string }) {
-  // Connect to WebSocket for AI screening
-  const streamUrl = `wss://${new URL(serverConfig.baseUrl).host}/stream`;
+function connectToAIStream(twiml: VoiceResponse, callInfo?: { from?: string; callSid?: string; host?: string }) {
+  // Connect to WebSocket for AI screening (use host from request)
+  const host = callInfo?.host || new URL(serverConfig.baseUrl).host;
+  const streamUrl = `wss://${host}/stream`;
   
   const connect = twiml.connect();
   const stream = connect.stream({

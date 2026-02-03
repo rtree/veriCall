@@ -33,8 +33,11 @@ export async function POST(request: NextRequest) {
   // イベント発火（Vlayer連携ポイント）
   await onDecisionMade(call, decision);
 
+  // ホスト名を取得（WebSocket URL用）
+  const host = request.headers.get('host') || request.headers.get('x-forwarded-host') || '';
+
   // TwiMLレスポンス生成
-  const twiml = buildResponse(decision, { from: call.from, callSid: call.callSid });
+  const twiml = buildResponse(decision, { from: call.from, callSid: call.callSid, host });
 
   return new NextResponse(twiml, {
     status: 200,
