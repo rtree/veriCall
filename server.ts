@@ -7,7 +7,7 @@ import { createServer, IncomingMessage } from 'http';
 import { parse } from 'url';
 import next from 'next';
 import { WebSocketServer, WebSocket } from 'ws';
-import { createSession, removeSession } from './lib/voice-ai/session';
+import { createSession, removeSession, getSession } from './lib/voice-ai/session';
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = process.env.HOSTNAME || '0.0.0.0';
@@ -78,7 +78,6 @@ app.prepare().then(() => {
           await session.handleMessage(data.toString());
         } else if (callSid) {
           // Forward all other messages to the session
-          const { getSession } = await import('./lib/voice-ai/session');
           const session = getSession(callSid);
           if (session) {
             await session.handleMessage(data.toString());
