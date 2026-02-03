@@ -55,6 +55,11 @@ app.prepare().then(() => {
       try {
         const message = JSON.parse(data.toString());
 
+        // Debug: Log all events
+        if (message.event !== 'media') {
+          console.log(`[WebSocket] Event: ${message.event}`);
+        }
+
         // Handle start event to get call info
         if (message.event === 'start') {
           const startMsg = message as TwilioStartMessage;
@@ -77,7 +82,11 @@ app.prepare().then(() => {
           const session = getSession(callSid);
           if (session) {
             await session.handleMessage(data.toString());
+          } else {
+            console.log(`[WebSocket] No session for callSid: ${callSid}`);
           }
+        } else {
+          console.log(`[WebSocket] No callSid set for event: ${message.event}`);
         }
       } catch (error) {
         console.error('[WebSocket] Error processing message:', error);

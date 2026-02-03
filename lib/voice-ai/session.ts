@@ -48,6 +48,7 @@ export class VoiceAISession {
   private silenceTimeout: NodeJS.Timeout | null = null;
   private decision: CallDecision | null = null;
   private hasGreeted = false;
+  private audioChunkCount = 0;
 
   // Silence detection
   private lastAudioTime = Date.now();
@@ -126,10 +127,11 @@ export class VoiceAISession {
     // Convert to Linear16 for STT
     const linear16Buffer = mulawToLinear16(mulawBuffer);
 
-    // Debug: log audio receipt periodically
-    if (Date.now() - this.lastAudioTime > 1000) {
-      console.log(`[Session ${this.config.callSid}] Receiving audio (${mulawBuffer.length} bytes)`);
+    // Debug: log first few audio chunks
+    if (this.audioChunkCount < 5) {
+      console.log(`[Session ${this.config.callSid}] Audio chunk ${this.audioChunkCount + 1}: ${mulawBuffer.length} bytes`);
     }
+    this.audioChunkCount++;
 
     // Update last audio time for silence detection
     this.lastAudioTime = Date.now();
