@@ -22,7 +22,9 @@ export class SpeechToText {
   private resultCallback: STTResultCallback | null = null;
   private config: STTConfig;
   private isStreamActive = false;
-  private hasError = false;  // Prevent retry loops
+  private hasError = false;
+  private isStarting = false;
+  private pendingAudio: Buffer[] = [];
 
   constructor(config: STTConfig = {}) {
     this.client = new SpeechClient();
@@ -37,31 +39,30 @@ export class SpeechToText {
    * Start streaming recognition
    */
   start(): void {
-    if (this.isStreamActive) return;
+    if (this.isStreamActive || this.isStarting) return;
     if (this.hasError) {
       console.warn('[STT] Previous error detected, not restarting');
       return;
     }
 
+    this.isStarting = true;
     console.log('[STT] Starting stream with config:', this.config);
 
-    const request: google.cloud.speech.v1.IStreamingRecognitionConfig = {
+    const streamingConfig: google.cloud.speech.v1.IStreamingRecognitionConfig = {
       config: {
         encoding: 'LINEAR16' as const,
         sampleRateHertz: this.config.sampleRate,
         languageCode: this.config.languageCode,
         model: this.config.model,
         enableAutomaticPunctuation: true,
-        // Optimize for real-time
         useEnhanced: true,
       },
       interimResults: true,
       singleUtterance: false,
     };
 
-    this.recognizeStream = this.client.streamingRecognize(request);
-    this.isStreamActive = true;
-    console.log('[STT] Stream created, listening for audio...');
+    // Create stream without initial config
+    this.recognizeStream = this.client.streamingRecognize();
 
     this.recognizeStream.on('data', (response: StreamingRecognizeResponse) => {
       if (!response.results || response.results.length === 0) return;
@@ -72,6 +73,8 @@ export class SpeechToText {
       const transcript = result.alternatives[0].transcript || '';
       const isFinal = result.isFinal || false;
 
+      console.log(`[STT] Received: "${transcript}" (final: ${isFinal})`);
+
       if (this.resultCallback && transcript) {
         this.resultCallback(transcript, isFinal);
       }
@@ -80,13 +83,31 @@ export class SpeechToText {
     this.recognizeStream.on('error', (error: Error) => {
       console.error('[STT] Stream error:', error.message);
       this.isStreamActive = false;
-      this.hasError = true;  // Prevent retry loops
+      this.isStarting = false;
+      this.hasError = true;
     });
 
     this.recognizeStream.on('end', () => {
       console.log('[STT] Stream ended');
       this.isStreamActive = false;
+      this.isStarting = false;
     });
+
+    // Write the streaming config first
+    this.recognizeStream.write({ streamingConfig });
+
+    this.isStreamActive = true;
+    this.isStarting = false;
+    console.log('[STT] Stream ready, config sent');
+
+    // Flush any pending audio
+    if (this.pendingAudio.length > 0) {
+      console.log(`[STT] Flushing ${this.pendingAudio.length} pending audio chunks`);
+      for (const audio of this.pendingAudio) {
+        this.recognizeStream.write({ audioContent: audio });
+      }
+      this.pendingAudio = [];
+    }
   }
 
   /**
@@ -94,19 +115,25 @@ export class SpeechToText {
    * @param audioData - Linear16 PCM audio buffer
    */
   writeAudio(audioData: Buffer): void {
-    // Don't try to restart if there was an error
     if (this.hasError) {
       return;
     }
 
-    if (!this.recognizeStream || !this.isStreamActive) {
-      console.warn('[STT] Stream not active, attempting to start...');
-      this.start();
+    // If stream is starting, buffer the audio
+    if (this.isStarting) {
+      this.pendingAudio.push(audioData);
+      return;
     }
 
-    if (this.recognizeStream && this.isStreamActive) {
-      this.recognizeStream.write({ audioContent: audioData });
+    // If stream is not active, start it and buffer this audio
+    if (!this.recognizeStream || !this.isStreamActive) {
+      this.pendingAudio.push(audioData);
+      this.start();
+      return;
     }
+
+    // Write directly to stream
+    this.recognizeStream.write({ audioContent: audioData });
   }
 
   /**
@@ -125,6 +152,7 @@ export class SpeechToText {
       this.recognizeStream = null;
     }
     this.isStreamActive = false;
+    this.pendingAudio = [];
   }
 
   /**

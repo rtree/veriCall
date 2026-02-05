@@ -62,10 +62,8 @@ export class VoiceAISession {
     this.gemini = new GeminiChat();
 
     this.setupSTTCallback();
-    
-    // Start STT stream immediately
-    console.log(`[Session ${this.config.callSid}] Starting STT stream...`);
-    this.stt.start();
+    // Note: STT stream will start automatically when first audio arrives
+    console.log(`[Session ${this.config.callSid}] Session initialized, STT will start on first audio`);
   }
 
   /**
