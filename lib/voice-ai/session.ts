@@ -319,15 +319,23 @@ export class VoiceAISession {
 const activeSessions = new Map<string, VoiceAISession>();
 
 export function createSession(ws: WebSocket, config: SessionConfig): VoiceAISession {
+  console.log(`[SessionStore] Creating session: ${config.callSid}, active count: ${activeSessions.size}`);
   const session = new VoiceAISession(ws, config);
   activeSessions.set(config.callSid, session);
+  console.log(`[SessionStore] Session created: ${config.callSid}, active count: ${activeSessions.size}`);
   return session;
 }
 
 export function getSession(callSid: string): VoiceAISession | undefined {
-  return activeSessions.get(callSid);
+  const session = activeSessions.get(callSid);
+  if (!session) {
+    console.log(`[SessionStore] Session not found: ${callSid}, active: [${Array.from(activeSessions.keys()).join(', ')}]`);
+  }
+  return session;
 }
 
 export function removeSession(callSid: string): void {
+  console.log(`[SessionStore] Removing session: ${callSid}`);
   activeSessions.delete(callSid);
+  console.log(`[SessionStore] Session removed, active count: ${activeSessions.size}`);
 }

@@ -18,17 +18,20 @@ export async function onDecisionMade(call: CallRecord, decision: Decision): Prom
   const log: CallLog = { call, decision };
   saveLog(log);
 
-  console.log(`✅ Decision: ${decision.action} (${decision.reason})`);
+  console.log(`📞 Call logged: ${call.callSid} ${decision.action}`);
 
-  // メール通知（非同期で送信、エラーがあってもフローは止めない）
-  sendCallNotification({
-    callId: call.callSid,
-    from: call.from,
-    to: call.to,
-    action: decision.action,
-    reason: decision.reason,
-    timestamp: new Date(),
-  }).catch((err) => console.error('Email notification error:', err));
+  // Note: ai_screen の場合、メール通知は Voice AI Session から送られる
+  // ここでは forward/reject の場合のみ通知
+  if (decision.action !== 'ai_screen') {
+    sendCallNotification({
+      callId: call.callSid,
+      from: call.from,
+      to: call.to,
+      action: decision.action,
+      reason: decision.reason,
+      timestamp: new Date(),
+    }).catch((err) => console.error('Email notification error:', err));
+  }
 
   // TODO: ここでVlayerを呼ぶ（後で実装）
   // await witness.createProof(log);

@@ -98,8 +98,10 @@ jobs:
             --port 8080 \
             --memory 512Mi \
             --cpu 1 \
-            --min-instances 0 \
+            --min-instances 1 \
             --max-instances 10 \
+            --session-affinity \
+            --timeout 600 \
             --set-env-vars="NODE_ENV=production" \
             --set-secrets="TWILIO_ACCOUNT_SID=TWILIO_ACCOUNT_SID:latest,TWILIO_AUTH_TOKEN=TWILIO_AUTH_TOKEN:latest,TWILIO_PHONE_NUMBER=TWILIO_PHONE_NUMBER:latest,DESTINATION_PHONE_NUMBER=DESTINATION_PHONE_NUMBER:latest,FORWARD_TIMEOUT=FORWARD_TIMEOUT:latest,WHITELIST_NUMBERS=WHITELIST_NUMBERS:latest,SENDGRID_API_KEY=SENDGRID_API_KEY:latest,NOTIFICATION_EMAIL=NOTIFICATION_EMAIL:latest,FROM_EMAIL=FROM_EMAIL:latest" \
             --service-account ${{ env.PROJECT_NUMBER }}-compute@developer.gserviceaccount.com
