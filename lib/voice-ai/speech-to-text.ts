@@ -1,6 +1,10 @@
 /**
  * Google Speech-to-Text streaming client
  * Optimized for phone calls (8kHz μ-law → Linear16)
+ * 
+ * Uses the official Node.js SDK pattern:
+ * - Pass config as argument to streamingRecognize()
+ * - Write raw audio buffers directly to stream
  */
 
 import { SpeechClient } from '@google-cloud/speech';
@@ -48,7 +52,9 @@ export class SpeechToText {
     this.isStarting = true;
     console.log('[STT] Starting stream with config:', this.config);
 
-    const streamingConfig: google.cloud.speech.v1.IStreamingRecognitionConfig = {
+    // Build request object for streamingRecognize
+    // Following official Node.js SDK pattern from Google documentation
+    const request = {
       config: {
         encoding: 'LINEAR16' as const,
         sampleRateHertz: this.config.sampleRate,
@@ -61,8 +67,8 @@ export class SpeechToText {
       singleUtterance: false,
     };
 
-    // Create stream without initial config
-    this.recognizeStream = this.client.streamingRecognize();
+    // Create stream WITH config as argument (official pattern)
+    this.recognizeStream = this.client.streamingRecognize(request);
 
     this.recognizeStream.on('data', (response: StreamingRecognizeResponse) => {
       if (!response.results || response.results.length === 0) return;
@@ -93,18 +99,16 @@ export class SpeechToText {
       this.isStarting = false;
     });
 
-    // Write the streaming config first
-    this.recognizeStream.write({ streamingConfig });
-
     this.isStreamActive = true;
     this.isStarting = false;
-    console.log('[STT] Stream ready, config sent');
+    console.log('[STT] Stream ready');
 
     // Flush any pending audio
     if (this.pendingAudio.length > 0) {
       console.log(`[STT] Flushing ${this.pendingAudio.length} pending audio chunks`);
       for (const audio of this.pendingAudio) {
-        this.recognizeStream.write({ audioContent: audio });
+        // Write raw buffer directly (no wrapping in { audioContent })
+        this.recognizeStream.write(audio);
       }
       this.pendingAudio = [];
     }
@@ -132,8 +136,8 @@ export class SpeechToText {
       return;
     }
 
-    // Write directly to stream
-    this.recognizeStream.write({ audioContent: audioData });
+    // Write raw buffer directly to stream (official SDK pattern)
+    this.recognizeStream.write(audioData);
   }
 
   /**
