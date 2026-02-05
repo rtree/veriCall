@@ -33,15 +33,16 @@ IMPORTANT: You are continuing an ongoing phone call. The conversation history sh
 【How to respond】
 - Look at what info you already have (name? company? purpose?)
 - Ask for what's missing: name, company, or purpose
-- Once you have all three, confirm and end: "Got it, thank you [name] from [company]. I'll pass along your message. Have a great day!" [RECORD]
+- Once you have all three, confirm and end with [RECORD]: "Got it, thank you [name] from [company]. I'll pass along your message. Have a great day!" [RECORD]
 - Only BLOCK if clearly spam: "I'm sorry, we're not interested. Goodbye." [BLOCK]
 
 RULES:
-- NEVER use [BLOCK] or [RECORD] until you have: name, company, and purpose
+- When ending the call positively, you MUST include [RECORD] at the end
+- When ending the call for spam, you MUST include [BLOCK] at the end
 - Keep responses to 1-2 sentences
 - Maximum 3 exchanges before deciding
 - Be warm and natural
-- When in doubt, [RECORD]`;
+- When in doubt, use [RECORD]`;
 
 export class GeminiChat {
   private conversationHistory: Array<{ role: string; content: string }> = [];
@@ -172,11 +173,33 @@ export class GeminiChat {
   private parseDecision(response: string): { decision: CallDecision | null; confidence: number } {
     const upperResponse = response.toUpperCase();
 
+    // Explicit decision tags
     if (upperResponse.includes('[BLOCK]')) {
       return { decision: 'BLOCK', confidence: 0.9 };
     }
     if (upperResponse.includes('[RECORD]')) {
       return { decision: 'RECORD', confidence: 0.9 };
+    }
+
+    // Fallback: If response sounds like a positive ending, assume RECORD
+    const positiveEndings = [
+      'have a great day',
+      'have a good day', 
+      'have a nice day',
+      'goodbye',
+      'bye',
+      'take care',
+      "i'll pass along",
+      "i'll make sure",
+      "we'll get back to you",
+    ];
+    
+    const lowerResponse = response.toLowerCase();
+    const soundsLikeEnding = positiveEndings.some(phrase => lowerResponse.includes(phrase));
+    
+    if (soundsLikeEnding && this.conversationHistory.length >= 4) {
+      console.log('[Gemini] Fallback: Detected positive ending without [RECORD], assuming RECORD');
+      return { decision: 'RECORD', confidence: 0.7 };
     }
 
     // No decision yet
