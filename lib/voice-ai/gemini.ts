@@ -31,18 +31,17 @@ IMPORTANT: You are continuing an ongoing phone call. The conversation history sh
 - Professional-sounding callers
 
 【How to respond】
-- Look at what info you already have (name? company? purpose?)
-- Ask for what's missing: name, company, or purpose
-- Once you have all three, confirm and end with [RECORD]: "Got it, thank you [name] from [company]. I'll pass along your message. Have a great day!" [RECORD]
-- Only BLOCK if clearly spam: "I'm sorry, we're not interested. Goodbye." [BLOCK]
+- Check the conversation history for what info you already have
+- Ask for missing info (name, company, purpose) ONCE only
+- If caller says "I already said" or seems frustrated, apologize and proceed with what you have
+- After 2-3 exchanges, wrap up: "Got it, I'll pass along your message. Have a great day!" [RECORD]
 
-RULES:
-- When ending the call positively, you MUST include [RECORD] at the end
-- When ending the call for spam, you MUST include [BLOCK] at the end
+CRITICAL RULES:
+- NEVER ask for the same information twice - this is very annoying
+- If info is missing after 2 attempts, proceed anyway with [RECORD]
+- Always end with [RECORD] or [BLOCK]
 - Keep responses to 1-2 sentences
-- Maximum 3 exchanges before deciding
-- Be warm and natural
-- When in doubt, use [RECORD]`;
+- Be warm, natural, and efficient`;
 
 export class GeminiChat {
   private conversationHistory: Array<{ role: string; content: string }> = [];
@@ -202,6 +201,12 @@ export class GeminiChat {
       return { decision: 'RECORD', confidence: 0.7 };
     }
 
+    // Auto-RECORD if conversation is too long (8+ messages = 4+ exchanges)
+    if (this.conversationHistory.length >= 8) {
+      console.log('[Gemini] Fallback: Conversation too long (8+ messages), auto-RECORD');
+      return { decision: 'RECORD', confidence: 0.6 };
+    }
+
     // No decision yet
     return { decision: null, confidence: 0 };
   }
@@ -223,6 +228,42 @@ export class GeminiChat {
     return this.conversationHistory
       .map(m => `${m.role === 'user' ? 'Caller' : 'AI'}: ${m.content}`)
       .join('\n');
+  }
+
+  /**
+   * Get a brief summary of the call (extracted from conversation)
+   */
+  getSummary(): string {
+    // Extract key info from conversation
+    const callerMessages = this.conversationHistory
+      .filter(m => m.role === 'user')
+      .map(m => m.content)
+      .join(' ');
+    
+    // Try to find name, company, and purpose from the conversation
+    let summary = '';
+    
+    // Look for the last AI message that contains the confirmation
+    const lastAiMessages = this.conversationHistory
+      .filter(m => m.role === 'assistant')
+      .slice(-2);
+    
+    for (const msg of lastAiMessages) {
+      if (msg.content.toLowerCase().includes('got it') || 
+          msg.content.toLowerCase().includes("i'll pass along")) {
+        // This is likely the summary message
+        summary = msg.content.replace(/\[RECORD\]/gi, '').replace(/\[BLOCK\]/gi, '').trim();
+        break;
+      }
+    }
+    
+    if (!summary) {
+      // Fallback: create a simple summary
+      const words = callerMessages.split(/\s+/).slice(0, 30).join(' ');
+      summary = `Call regarding: ${words}...`;
+    }
+    
+    return summary;
   }
 
   /**

@@ -16,6 +16,7 @@ export interface VoiceAINotification {
   from: string;
   timestamp: string;
   transcript: string;
+  summary?: string;  // Brief summary of the call
   decision: 'RECORD' | 'BLOCK';
 }
 
@@ -35,6 +36,13 @@ export async function sendVoiceAINotification(notification: VoiceAINotification)
   const html = `
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
       <h2 style="color: #333;">📞 New Call Message</h2>
+      
+      ${notification.summary ? `
+      <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #2196F3;">
+        <strong style="color: #1976D2;">📋 Summary:</strong><br/>
+        <span style="color: #333;">${notification.summary}</span>
+      </div>
+      ` : ''}
       
       <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
         <tr>
@@ -56,7 +64,7 @@ export async function sendVoiceAINotification(notification: VoiceAINotification)
       </table>
       
       <h3 style="color: #333;">📝 Conversation Transcript</h3>
-      <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; white-space: pre-wrap; font-family: monospace;">
+      <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; white-space: pre-wrap; font-family: monospace; font-size: 12px;">
 ${notification.transcript}
       </div>
       
@@ -69,6 +77,7 @@ ${notification.transcript}
   const text = `
 New Call Message
 ================
+${notification.summary ? `Summary: ${notification.summary}\n` : ''}
 From: ${notification.from}
 Time: ${new Date(notification.timestamp).toLocaleString()}
 Decision: ${notification.decision}
