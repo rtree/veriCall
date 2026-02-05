@@ -141,7 +141,7 @@ export class GeminiChat {
       contents,
       config: {
         systemInstruction,
-        maxOutputTokens: 256,  // Enough for 2-3 sentences
+        maxOutputTokens: 512,  // Enough for complete responses
         temperature: 0.7,     // Slightly creative but consistent
       },
     });

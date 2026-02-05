@@ -49,6 +49,8 @@ export class VoiceAISession {
   private decision: CallDecision | null = null;
   private hasGreeted = false;
   private audioChunkCount = 0;
+  private isSpeaking = false;  // True while AI is speaking
+  private pendingTranscripts: string[] = [];  // Queue for transcripts while processing
 
   // Silence detection
   private lastAudioTime = Date.now();
@@ -97,8 +99,11 @@ export class VoiceAISession {
           break;
 
         case 'mark':
-          // Audio playback marker - can be used for timing
+          // Audio playback marker - AI finished speaking
           console.log(`[Session ${this.config.callSid}] Mark: ${message.mark?.name}`);
+          this.isSpeaking = false;
+          // Process any pending transcripts
+          await this.processPendingTranscripts();
           break;
       }
     } catch (error) {
@@ -155,9 +160,33 @@ export class VoiceAISession {
       
       if (isFinal && transcript.trim()) {
         console.log(`[Session ${this.config.callSid}] Caller said: "${transcript}"`);
-        await this.processCallerInput(transcript);
+        
+        // If AI is speaking or processing, queue the transcript
+        if (this.isSpeaking || this.isProcessing) {
+          console.log(`[Session ${this.config.callSid}] Queuing transcript (speaking: ${this.isSpeaking}, processing: ${this.isProcessing})`);
+          this.pendingTranscripts.push(transcript);
+        } else {
+          await this.processCallerInput(transcript);
+        }
       }
     });
+  }
+
+  /**
+   * Process any pending transcripts after AI finishes speaking
+   */
+  private async processPendingTranscripts(): Promise<void> {
+    if (this.pendingTranscripts.length === 0) return;
+    if (this.isProcessing) return;
+    
+    // Combine all pending transcripts into one
+    const combined = this.pendingTranscripts.join(' ').trim();
+    this.pendingTranscripts = [];
+    
+    if (combined) {
+      console.log(`[Session ${this.config.callSid}] Processing queued transcripts: "${combined}"`);
+      await this.processCallerInput(combined);
+    }
   }
 
   /**
@@ -197,6 +226,7 @@ export class VoiceAISession {
     }
 
     console.log(`[Session ${this.config.callSid}] 🔊 Speaking: "${text}"`);
+    this.isSpeaking = true;  // Set speaking flag
 
     try {
       // Convert text to speech (returns base64 μ-law)
