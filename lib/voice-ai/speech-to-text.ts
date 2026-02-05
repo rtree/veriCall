@@ -22,6 +22,7 @@ export class SpeechToText {
   private resultCallback: STTResultCallback | null = null;
   private config: STTConfig;
   private isStreamActive = false;
+  private hasError = false;  // Prevent retry loops
 
   constructor(config: STTConfig = {}) {
     this.client = new SpeechClient();
@@ -37,6 +38,10 @@ export class SpeechToText {
    */
   start(): void {
     if (this.isStreamActive) return;
+    if (this.hasError) {
+      console.warn('[STT] Previous error detected, not restarting');
+      return;
+    }
 
     console.log('[STT] Starting stream with config:', this.config);
 
@@ -75,6 +80,7 @@ export class SpeechToText {
     this.recognizeStream.on('error', (error: Error) => {
       console.error('[STT] Stream error:', error.message);
       this.isStreamActive = false;
+      this.hasError = true;  // Prevent retry loops
     });
 
     this.recognizeStream.on('end', () => {
@@ -88,8 +94,13 @@ export class SpeechToText {
    * @param audioData - Linear16 PCM audio buffer
    */
   writeAudio(audioData: Buffer): void {
+    // Don't try to restart if there was an error
+    if (this.hasError) {
+      return;
+    }
+
     if (!this.recognizeStream || !this.isStreamActive) {
-      console.warn('[STT] Stream not active, starting...');
+      console.warn('[STT] Stream not active, attempting to start...');
       this.start();
     }
 
