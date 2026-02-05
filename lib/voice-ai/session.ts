@@ -111,6 +111,20 @@ export class VoiceAISession {
     }
   }
 
+  // Filler words that shouldn't interrupt AI speech
+  private static readonly FILLERS = new Set([
+    'yeah', 'yes', 'yep', 'okay', 'ok', 'uh', 'um', 'uh-huh', 
+    'right', 'sure', 'mhm', 'hmm', 'ah', 'oh', 'i see'
+  ]);
+
+  /**
+   * Check if transcript is just a filler/acknowledgment
+   */
+  private isFiller(transcript: string): boolean {
+    const normalized = transcript.toLowerCase().trim().replace(/[.,!?]/g, '');
+    return VoiceAISession.FILLERS.has(normalized);
+  }
+
   /**
    * Send initial greeting
    */
@@ -120,6 +134,10 @@ export class VoiceAISession {
 
     const greeting = "Hello, this is an automated assistant. May I ask who's calling and the purpose of your call?";
     console.log(`[Session ${this.config.callSid}] 🎤 Greeting: "${greeting}"`);
+    
+    // Add to Gemini history so it doesn't repeat
+    this.gemini.addInitialGreeting(greeting);
+    
     await this.speak(greeting);
   }
 
@@ -161,9 +179,23 @@ export class VoiceAISession {
       if (isFinal && transcript.trim()) {
         console.log(`[Session ${this.config.callSid}] Caller said: "${transcript}"`);
         
-        // If AI is speaking or processing, queue the transcript
-        if (this.isSpeaking || this.isProcessing) {
-          console.log(`[Session ${this.config.callSid}] Queuing transcript (speaking: ${this.isSpeaking}, processing: ${this.isProcessing})`);
+        // Check if it's just a filler word
+        if (this.isFiller(transcript)) {
+          console.log(`[Session ${this.config.callSid}] Ignoring filler: "${transcript}"`);
+          return;
+        }
+        
+        // If AI is speaking, this is a barge-in (interrupt)
+        if (this.isSpeaking) {
+          console.log(`[Session ${this.config.callSid}] Barge-in detected, processing: "${transcript}"`);
+          // Clear pending and process this immediately
+          this.pendingTranscripts = [];
+          // Note: We can't stop TTS mid-play, but we can process the new input
+        }
+        
+        // If already processing, queue it
+        if (this.isProcessing) {
+          console.log(`[Session ${this.config.callSid}] Queuing transcript (processing in progress)`);
           this.pendingTranscripts.push(transcript);
         } else {
           await this.processCallerInput(transcript);

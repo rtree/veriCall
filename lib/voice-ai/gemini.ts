@@ -54,6 +54,17 @@ export class GeminiChat {
   }
 
   /**
+   * Add initial greeting to conversation history
+   * This prevents Gemini from repeating the greeting
+   */
+  addInitialGreeting(greeting: string): void {
+    this.conversationHistory.push({
+      role: 'assistant',
+      content: greeting,
+    });
+  }
+
+  /**
    * Get the system prompt (for hashing/verification)
    */
   static getSystemPrompt(): string {
