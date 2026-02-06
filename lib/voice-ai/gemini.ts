@@ -60,6 +60,13 @@ SEEKING/CONFIRMING signals:
 - "I need to confirm/check/ask about..."
 - "Is [specific person] available?"
 
+SENT SOMETHING signals (they already took action):
+- "I sent a quote/estimate/proposal"
+- "I sent an invoice/bill"
+- "I sent documents/files/email"
+- "I mailed/shipped something"
+- "Please notify/tell [person] that..."
+
 EXISTING RELATIONSHIP signals:
 - Mentions specific past interactions
 - Knows specific details only a real contact would know
