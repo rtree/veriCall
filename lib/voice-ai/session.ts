@@ -265,6 +265,14 @@ export class VoiceAISession {
     // Reset timer
     if (this.utteranceTimer) clearTimeout(this.utteranceTimer);
     this.utteranceTimer = setTimeout(async () => {
+      // If decision already made, discard the buffer
+      if (this.decision) {
+        console.log(`[Session ${this.config.callSid}] Discarding buffered utterance (decision already: ${this.decision}): "${this.utteranceBuffer}"`);
+        this.utteranceBuffer = '';
+        this.utteranceTimer = null;
+        return;
+      }
+      
       // No more speech came — send the buffer
       console.log(`[Session ${this.config.callSid}] Utterance buffer timeout, sending: "${this.utteranceBuffer}"`);
       const buffered = this.utteranceBuffer;
@@ -286,6 +294,13 @@ export class VoiceAISession {
     if (this.utteranceTimer) {
       clearTimeout(this.utteranceTimer);
       this.utteranceTimer = null;
+    }
+    
+    // If decision already made, discard everything
+    if (this.decision) {
+      console.log(`[Session ${this.config.callSid}] Discarding input (decision already: ${this.decision}): "${transcript.trim()}"`);
+      this.utteranceBuffer = '';
+      return;
     }
     
     const combined = this.utteranceBuffer
@@ -408,6 +423,14 @@ export class VoiceAISession {
    * Handle final decision
    */
   private async handleDecision(): Promise<void> {
+    // Cancel any pending utterance buffer
+    if (this.utteranceTimer) {
+      clearTimeout(this.utteranceTimer);
+      this.utteranceTimer = null;
+    }
+    this.utteranceBuffer = '';
+    this.pendingTranscripts = [];
+    
     const transcript = this.gemini.getTranscript();
     
     // Generate AI-powered summary based on decision type
