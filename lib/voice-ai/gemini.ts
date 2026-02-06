@@ -316,9 +316,10 @@ export class GeminiChat {
       return { decision: 'RECORD', confidence: 0.7, cleanedText };
     }
 
-    // Auto-RECORD if conversation is too long (8+ messages = 4+ exchanges)
-    if (this.conversationHistory.length >= 8) {
-      console.log('[Gemini] Fallback: Conversation too long (8+ messages), auto-RECORD');
+    // Auto-RECORD if conversation is too long (12+ messages = 6+ exchanges)
+    // Increased from 8 to account for "repeat please" messages due to choppy connection
+    if (this.conversationHistory.length >= 12) {
+      console.log('[Gemini] Fallback: Conversation too long (12+ messages), auto-RECORD');
       return { decision: 'RECORD', confidence: 0.6, cleanedText };
     }
 
