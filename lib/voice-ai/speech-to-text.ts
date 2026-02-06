@@ -82,12 +82,6 @@ export class SpeechToText {
       },
       interimResults: true,
       singleUtterance: false,
-      // Voice Activity Detection: wait longer before considering speech "done"
-      // This prevents cutting off mid-sentence for hesitant speakers
-      voiceActivityTimeout: {
-        speechStartTimeout: { seconds: 10 },    // Wait up to 10s for speech to begin
-        speechEndTimeout: { seconds: 1, nanos: 500000000 },  // Wait 1.5s of silence before ending utterance
-      },
     };
 
     // Create stream WITH config as argument (official pattern)
