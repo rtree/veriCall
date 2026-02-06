@@ -58,6 +58,12 @@ export class VoiceAISession {
   private markQueue: string[] = [];  // Track pending marks (max 10)
   private readonly MAX_MARK_QUEUE = 10;
   private shouldEndAfterSpeaking = false;  // Flag to end call after AI finishes speaking
+  
+  // Short utterance buffering - wait briefly for more speech before sending to AI
+  private utteranceBuffer = '';
+  private utteranceTimer: NodeJS.Timeout | null = null;
+  private static readonly UTTERANCE_BUFFER_MS = 1500;  // Wait 1.5s for more speech
+  private static readonly SHORT_UTTERANCE_WORDS = 5;    // Buffer utterances with ≤5 words
 
   // Silence detection
   private lastAudioTime = Date.now();
@@ -233,15 +239,67 @@ export class VoiceAISession {
           this.isSpeaking = false;
         }
         
-        // If already processing, queue it
-        if (this.isProcessing) {
-          console.log(`[Session ${this.config.callSid}] Queuing transcript (processing in progress)`);
-          this.pendingTranscripts.push(transcript);
+        // Buffer short utterances to avoid sending fragments to AI
+        // Short phrases like "So, uh," or "I have" may be followed by more speech
+        const wordCount = transcript.trim().split(/\s+/).length;
+        if (wordCount <= VoiceAISession.SHORT_UTTERANCE_WORDS) {
+          this.bufferUtterance(transcript);
         } else {
-          await this.processCallerInput(transcript);
+          // Long enough — flush any buffer and process immediately
+          this.flushAndProcess(transcript);
         }
       }
     });
+  }
+
+  /**
+   * Buffer a short utterance, waiting for more speech
+   */
+  private bufferUtterance(transcript: string): void {
+    this.utteranceBuffer = this.utteranceBuffer
+      ? `${this.utteranceBuffer} ${transcript.trim()}`
+      : transcript.trim();
+    
+    console.log(`[Session ${this.config.callSid}] Buffering short utterance: "${transcript.trim()}" (buffer: "${this.utteranceBuffer}")`);
+    
+    // Reset timer
+    if (this.utteranceTimer) clearTimeout(this.utteranceTimer);
+    this.utteranceTimer = setTimeout(async () => {
+      // No more speech came — send the buffer
+      console.log(`[Session ${this.config.callSid}] Utterance buffer timeout, sending: "${this.utteranceBuffer}"`);
+      const buffered = this.utteranceBuffer;
+      this.utteranceBuffer = '';
+      this.utteranceTimer = null;
+      
+      if (this.isProcessing) {
+        this.pendingTranscripts.push(buffered);
+      } else {
+        await this.processCallerInput(buffered);
+      }
+    }, VoiceAISession.UTTERANCE_BUFFER_MS);
+  }
+
+  /**
+   * Flush buffer and process combined with new transcript
+   */
+  private async flushAndProcess(transcript: string): Promise<void> {
+    if (this.utteranceTimer) {
+      clearTimeout(this.utteranceTimer);
+      this.utteranceTimer = null;
+    }
+    
+    const combined = this.utteranceBuffer
+      ? `${this.utteranceBuffer} ${transcript.trim()}`
+      : transcript.trim();
+    this.utteranceBuffer = '';
+    
+    if (combined) {
+      if (this.isProcessing) {
+        this.pendingTranscripts.push(combined);
+      } else {
+        await this.processCallerInput(combined);
+      }
+    }
   }
 
   /**
