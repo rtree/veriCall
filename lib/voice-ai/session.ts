@@ -351,7 +351,9 @@ export class VoiceAISession {
    */
   private async handleDecision(): Promise<void> {
     const transcript = this.gemini.getTranscript();
-    const summary = this.gemini.getSummary();  // Get conversation summary
+    
+    // Generate AI-powered summary based on decision type
+    const summary = await this.gemini.generateSummary(this.decision!);
 
     // Send email notification for BOTH RECORD and BLOCK
     try {

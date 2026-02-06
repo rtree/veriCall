@@ -347,39 +347,70 @@ export class GeminiChat {
   }
 
   /**
-   * Get a brief summary of the call (extracted from conversation)
+   * Get a brief summary of the call using AI
    */
-  getSummary(): string {
-    // Extract key info from conversation
+  async generateSummary(decision: CallDecision): Promise<string> {
+    const transcript = this.getTranscript();
+    
+    const prompt = decision === 'BLOCK' 
+      ? `Based on this phone call transcript, write a brief summary (1-2 sentences) explaining WHY this call was identified as spam/scam/unwanted. Focus on the red flags.
+
+Transcript:
+${transcript}
+
+Summary:`
+      : `Based on this phone call transcript, write a brief summary (1-2 sentences) describing the PURPOSE of the call and any important details (caller name, company, what they need).
+
+Transcript:
+${transcript}
+
+Summary:`;
+
+    try {
+      const genAI = new GoogleGenAI({
+        vertexai: true,
+        project: this.projectId,
+        location: this.location,
+      });
+
+      const response = await genAI.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+          temperature: 0.3,
+          maxOutputTokens: 100,
+        },
+      });
+
+      const summary = response.text?.trim() || '';
+      console.log(`[Gemini] Generated summary: ${summary}`);
+      return summary;
+    } catch (error) {
+      console.error('[Gemini] Failed to generate summary:', error);
+      // Fallback to simple extraction
+      return this.getSimpleSummary();
+    }
+  }
+
+  /**
+   * Simple fallback summary (no AI)
+   */
+  private getSimpleSummary(): string {
     const callerMessages = this.conversationHistory
       .filter(m => m.role === 'user')
       .map(m => m.content)
       .join(' ');
     
-    // Try to find name, company, and purpose from the conversation
-    let summary = '';
-    
-    // Look for the last AI message that contains the confirmation
-    const lastAiMessages = this.conversationHistory
-      .filter(m => m.role === 'assistant')
-      .slice(-2);
-    
-    for (const msg of lastAiMessages) {
-      if (msg.content.toLowerCase().includes('got it') || 
-          msg.content.toLowerCase().includes("i'll pass along")) {
-        // This is likely the summary message
-        summary = msg.content.replace(/\[RECORD\]/gi, '').replace(/\[BLOCK\]/gi, '').trim();
-        break;
-      }
-    }
-    
-    if (!summary) {
-      // Fallback: create a simple summary
-      const words = callerMessages.split(/\s+/).slice(0, 30).join(' ');
-      summary = `Call regarding: ${words}...`;
-    }
-    
-    return summary;
+    const words = callerMessages.split(/\s+/).slice(0, 20).join(' ');
+    return words ? `${words}...` : 'Brief call with no clear purpose';
+  }
+
+  /**
+   * Get a brief summary of the call (extracted from conversation)
+   * @deprecated Use generateSummary() instead for AI-powered summaries
+   */
+  getSummary(): string {
+    return this.getSimpleSummary();
   }
 
   /**
