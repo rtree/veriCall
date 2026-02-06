@@ -62,6 +62,23 @@ export class SpeechToText {
         model: this.config.model,
         enableAutomaticPunctuation: true,
         useEnhanced: true,
+        // Speech contexts to help recognize common phone patterns
+        speechContexts: [{
+          phrases: [
+            // Name introduction patterns
+            'my name is',
+            'this is',
+            'I am',
+            'speaking',
+            'calling from',
+            // Common follow-up phrases
+            'regarding',
+            'about',
+            'following up',
+            'returning your call',
+          ],
+          boost: 15,
+        }],
       },
       interimResults: true,
       singleUtterance: false,
