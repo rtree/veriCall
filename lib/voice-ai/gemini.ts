@@ -212,8 +212,9 @@ export class GeminiChat {
       contents,
       config: {
         systemInstruction,
-        maxOutputTokens: 512,  // Enough for complete responses
-        temperature: 0.7,     // Slightly creative but consistent
+        maxOutputTokens: 1024,
+        temperature: 0.7,
+        thinkingConfig: { thinkingBudget: 0 },
       },
     });
 
@@ -405,7 +406,8 @@ Write ONLY the summary, nothing else:`;
         contents: prompt,
         config: {
           temperature: 0.3,
-          maxOutputTokens: 100,
+          maxOutputTokens: 1024,
+          thinkingConfig: { thinkingBudget: 0 },
         },
       });
 
