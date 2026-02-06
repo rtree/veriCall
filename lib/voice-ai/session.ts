@@ -353,23 +353,18 @@ export class VoiceAISession {
     const transcript = this.gemini.getTranscript();
     const summary = this.gemini.getSummary();  // Get conversation summary
 
-    if (this.decision === 'RECORD') {
-      // Send email notification with transcript and summary
-      try {
-        await sendVoiceAINotification({
-          from: this.config.from,
-          timestamp: new Date().toISOString(),
-          transcript,
-          decision: 'RECORD',
-          summary,  // Include summary in email
-        });
-        console.log(`[Session ${this.config.callSid}] Email notification sent with summary`);
-      } catch (error) {
-        console.error(`[Session ${this.config.callSid}] Failed to send email:`, error);
-      }
-    } else {
-      // BLOCK - just log
-      console.log(`[Session ${this.config.callSid}] Blocked sales call from ${this.config.from}`);
+    // Send email notification for BOTH RECORD and BLOCK
+    try {
+      await sendVoiceAINotification({
+        from: this.config.from,
+        timestamp: new Date().toISOString(),
+        transcript,
+        decision: this.decision!,
+        summary,
+      });
+      console.log(`[Session ${this.config.callSid}] Email notification sent (${this.decision}) with summary`);
+    } catch (error) {
+      console.error(`[Session ${this.config.callSid}] Failed to send email:`, error);
     }
 
     // Set flag to end call after AI finishes speaking (not immediately)

@@ -31,15 +31,26 @@ export async function sendVoiceAINotification(notification: VoiceAINotification)
     return false;
   }
 
-  const subject = `📞 VeriCall: Message from ${notification.from}`;
+  const isScam = notification.decision === 'BLOCK';
+  const emoji = isScam ? '🚨' : '📞';
+  const title = isScam ? 'Scam Alert' : 'New Call Message';
+  const subject = `${emoji} VeriCall: ${title} from ${notification.from}`;
+  
+  // Colors based on decision
+  const headerColor = isScam ? '#d32f2f' : '#333';
+  const summaryBg = isScam ? '#ffebee' : '#e3f2fd';
+  const summaryBorder = isScam ? '#f44336' : '#2196F3';
+  const summaryLabel = isScam ? '#c62828' : '#1976D2';
+  const decisionBg = isScam ? '#f44336' : '#4CAF50';
+  const decisionText = isScam ? 'SCAM' : 'OK';
 
   const html = `
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #333;">📞 New Call Message</h2>
+      <h2 style="color: ${headerColor};">${emoji} ${title}</h2>
       
       ${notification.summary ? `
-      <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #2196F3;">
-        <strong style="color: #1976D2;">📋 Summary:</strong><br/>
+      <div style="background: ${summaryBg}; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid ${summaryBorder};">
+        <strong style="color: ${summaryLabel};">📋 Summary:</strong><br/>
         <span style="color: #333;">${notification.summary}</span>
       </div>
       ` : ''}
@@ -56,8 +67,8 @@ export async function sendVoiceAINotification(notification: VoiceAINotification)
         <tr>
           <td style="padding: 10px; border-bottom: 1px solid #eee; color: #666;">Decision</td>
           <td style="padding: 10px; border-bottom: 1px solid #eee;">
-            <span style="background: ${notification.decision === 'RECORD' ? '#4CAF50' : '#f44336'}; color: white; padding: 4px 8px; border-radius: 4px;">
-              ${notification.decision}
+            <span style="background: ${decisionBg}; color: white; padding: 4px 8px; border-radius: 4px;">
+              ${decisionText}
             </span>
           </td>
         </tr>
@@ -75,12 +86,12 @@ ${notification.transcript}
   `;
 
   const text = `
-New Call Message
+${title}
 ================
 ${notification.summary ? `Summary: ${notification.summary}\n` : ''}
 From: ${notification.from}
 Time: ${new Date(notification.timestamp).toLocaleString()}
-Decision: ${notification.decision}
+Decision: ${decisionText}
 
 Transcript:
 ${notification.transcript}
