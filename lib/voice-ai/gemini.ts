@@ -343,12 +343,25 @@ export class GeminiChat {
   }
 
   /**
-   * Get full conversation transcript
+   * Get full conversation transcript as plain text
    */
   getTranscript(): string {
     return this.conversationHistory
       .map(m => `${m.role === 'user' ? 'Caller' : 'AI'}: ${m.content}`)
       .join('\n');
+  }
+
+  /**
+   * Get conversation history as structured array for HTML rendering
+   */
+  getConversationEntries(): Array<{ role: 'Caller' | 'AI'; content: string }> {
+    return this.conversationHistory.map(m => ({
+      role: m.role === 'user' ? 'Caller' as const : 'AI' as const,
+      content: m.content
+        .replace(/\[RECORD\]/gi, '')
+        .replace(/\[BLOCK\]/gi, '')
+        .trim(),
+    }));
   }
 
   /**
@@ -358,18 +371,27 @@ export class GeminiChat {
     const transcript = this.getTranscript();
     
     const prompt = decision === 'BLOCK' 
-      ? `Based on this phone call transcript, write a brief summary (1-2 sentences) explaining WHY this call was identified as spam/scam/unwanted. Focus on the red flags.
+      ? `You are summarizing a phone call that was blocked as spam/scam.
+
+Write 1-2 sentences explaining:
+- What the caller was trying to sell or promote
+- Why it was flagged (e.g., unsolicited, postcard scam, cold call)
 
 Transcript:
 ${transcript}
 
-Summary:`
-      : `Based on this phone call transcript, write a brief summary (1-2 sentences) describing the PURPOSE of the call and any important details (caller name, company, what they need).
+Write ONLY the summary, nothing else:`
+      : `You are summarizing a legitimate phone call.
+
+Write 1-2 sentences covering ALL of the following:
+- Caller's name (if given)
+- Purpose of the call (why they called)
+- Key details (what they need, what they sent, who they want to reach)
 
 Transcript:
 ${transcript}
 
-Summary:`;
+Write ONLY the summary, nothing else:`;
 
     try {
       const genAI = new GoogleGenAI({

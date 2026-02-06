@@ -12,11 +12,17 @@ if (SENDGRID_API_KEY) {
   sgMail.setApiKey(SENDGRID_API_KEY);
 }
 
+export interface ConversationEntry {
+  role: 'Caller' | 'AI';
+  content: string;
+}
+
 export interface VoiceAINotification {
   from: string;
   timestamp: string;
-  transcript: string;
-  summary?: string;  // Brief summary of the call
+  transcript: string;  // Plain text for fallback
+  entries?: ConversationEntry[];  // Structured for HTML table
+  summary?: string;
   decision: 'RECORD' | 'BLOCK';
 }
 
@@ -75,9 +81,25 @@ export async function sendVoiceAINotification(notification: VoiceAINotification)
       </table>
       
       <h3 style="color: #333;">📝 Conversation Transcript</h3>
-      <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; white-space: pre-wrap; font-family: monospace; font-size: 12px;">
-${notification.transcript}
-      </div>
+      <table style="width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px;">
+        <thead>
+          <tr style="background: #e0e0e0;">
+            <th style="padding: 8px 12px; text-align: left; width: 70px; border-bottom: 2px solid #bbb;">Speaker</th>
+            <th style="padding: 8px 12px; text-align: left; border-bottom: 2px solid #bbb;">Message</th>
+          </tr>
+        </thead>
+        <tbody>
+${(notification.entries || []).map((e, i) => {
+  const bg = i % 2 === 0 ? '#f9f9f9' : '#ffffff';
+  const roleColor = e.role === 'Caller' ? '#1565C0' : '#2E7D32';
+  const roleIcon = e.role === 'Caller' ? '🗣️' : '🤖';
+  return `          <tr style="background: ${bg};">
+            <td style="padding: 8px 12px; border-bottom: 1px solid #eee; color: ${roleColor}; font-weight: bold; white-space: nowrap;">${roleIcon} ${e.role}</td>
+            <td style="padding: 8px 12px; border-bottom: 1px solid #eee;">${e.content}</td>
+          </tr>`;
+}).join('\n')}
+        </tbody>
+      </table>
       
       <p style="color: #999; font-size: 12px; margin-top: 30px;">
         This notification was sent by VeriCall AI Receptionist.
@@ -96,6 +118,11 @@ Decision: ${decisionText}
 Transcript:
 ${notification.transcript}
   `;
+
+  // Log email content for debugging
+  console.log(`📧 [Email] Subject: ${subject}`);
+  console.log(`📧 [Email] Summary: ${notification.summary || '(none)'}`);
+  console.log(`📧 [Email] Transcript (${(notification.entries || []).length} messages):\n${notification.transcript}`);
 
   try {
     await sgMail.send({

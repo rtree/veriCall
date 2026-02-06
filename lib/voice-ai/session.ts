@@ -432,6 +432,7 @@ export class VoiceAISession {
     this.pendingTranscripts = [];
     
     const transcript = this.gemini.getTranscript();
+    const entries = this.gemini.getConversationEntries();
     
     // Generate AI-powered summary based on decision type
     const summary = await this.gemini.generateSummary(this.decision!);
@@ -442,6 +443,7 @@ export class VoiceAISession {
         from: this.config.from,
         timestamp: new Date().toISOString(),
         transcript,
+        entries,
         decision: this.decision!,
         summary,
       });
