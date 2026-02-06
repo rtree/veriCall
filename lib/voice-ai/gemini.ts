@@ -18,28 +18,30 @@ const SYSTEM_PROMPT = `You are a friendly phone receptionist AI taking messages 
 
 IMPORTANT: You are continuing an ongoing phone call. The conversation history shows what has already been said. NEVER repeat greetings or phrases that appear in the history.
 
-【BLOCK - Only obvious spam/cold sales】
-- Cold calls offering services (SEO, marketing, insurance, cost reduction)
+[BLOCK] - Only obvious spam/cold sales:
+- Cold calls offering services (SEO, marketing, insurance, cost reduction, penny stocks, investments)
 - Refuses to give name or company after being asked
 - Generic "decision maker" requests with no specific purpose
 - Pushy telemarketers
 
-【RECORD - Take message (DEFAULT)】
+[RECORD] - Take message (DEFAULT):
 - Anyone with a name and reason to call
 - Business partners, vendors, clients
 - Returning a call or following up
 - Professional-sounding callers
 
-【How to respond】
+How to respond:
 - Check the conversation history for what info you already have
 - Ask for missing info (name, company, purpose) ONCE only
 - If caller says "I already said" or seems frustrated, apologize and proceed with what you have
 - After 2-3 exchanges, wrap up: "Got it, I'll pass along your message. Have a great day!" [RECORD]
+- For BLOCK: "Thank you for calling, but we're not interested at this time. Goodbye." [BLOCK]
 
 CRITICAL RULES:
-- NEVER ask for the same information twice - this is very annoying
+- NEVER respond with just a tag like "[BLOCK]" alone - always include a polite message
+- NEVER ask for the same information twice
 - If info is missing after 2 attempts, proceed anyway with [RECORD]
-- Always end with [RECORD] or [BLOCK]
+- Always end your response with [RECORD] or [BLOCK] tag
 - Keep responses to 1-2 sentences
 - Be warm, natural, and efficient`;
 
@@ -101,18 +103,18 @@ export class GeminiChat {
       const response = await this.callGemini(messages);
 
       // Parse decision from response
-      const decision = this.parseDecision(response);
+      const { decision, confidence, cleanedText } = this.parseDecision(response);
 
-      // Add assistant response to history
+      // Add assistant response to history (use original for context)
       this.conversationHistory.push({
         role: 'assistant',
         content: response,
       });
 
       return {
-        text: this.cleanResponse(response),
-        decision: decision.decision,
-        confidence: decision.confidence,
+        text: cleanedText || this.cleanResponse(response),
+        decision,
+        confidence,
       };
     } catch (error) {
       console.error('[Gemini] Error:', error);
@@ -169,15 +171,38 @@ export class GeminiChat {
   /**
    * Parse decision from AI response
    */
-  private parseDecision(response: string): { decision: CallDecision | null; confidence: number } {
+  private parseDecision(response: string): { decision: CallDecision | null; confidence: number; cleanedText: string } {
     const upperResponse = response.toUpperCase();
+    let cleanedText = response;
 
-    // Explicit decision tags
-    if (upperResponse.includes('[BLOCK]')) {
-      return { decision: 'BLOCK', confidence: 0.9 };
+    // Explicit decision tags (both half-width and full-width brackets)
+    const isBlock = upperResponse.includes('[BLOCK]') || upperResponse.includes('【BLOCK】') || upperResponse.includes('【BLOCK');
+    const isRecord = upperResponse.includes('[RECORD]') || upperResponse.includes('【RECORD】') || upperResponse.includes('【RECORD');
+
+    // Remove tags from response text
+    cleanedText = response
+      .replace(/\[BLOCK\]/gi, '')
+      .replace(/\[RECORD\]/gi, '')
+      .replace(/【BLOCK】/gi, '')
+      .replace(/【RECORD】/gi, '')
+      .replace(/【BLOCK/gi, '')
+      .replace(/【RECORD/gi, '')
+      .trim();
+
+    if (isBlock) {
+      // If response is just the tag with no text, provide a default message
+      if (!cleanedText || cleanedText.length < 10) {
+        cleanedText = "Thank you for calling, but we're not interested at this time. Goodbye.";
+        console.log('[Gemini] Added fallback message for BLOCK');
+      }
+      return { decision: 'BLOCK', confidence: 0.9, cleanedText };
     }
-    if (upperResponse.includes('[RECORD]')) {
-      return { decision: 'RECORD', confidence: 0.9 };
+    if (isRecord) {
+      if (!cleanedText || cleanedText.length < 10) {
+        cleanedText = "Got it, I'll pass along your message. Have a great day!";
+        console.log('[Gemini] Added fallback message for RECORD');
+      }
+      return { decision: 'RECORD', confidence: 0.9, cleanedText };
     }
 
     // Fallback: If response sounds like a positive ending, assume RECORD
@@ -198,17 +223,17 @@ export class GeminiChat {
     
     if (soundsLikeEnding && this.conversationHistory.length >= 4) {
       console.log('[Gemini] Fallback: Detected positive ending without [RECORD], assuming RECORD');
-      return { decision: 'RECORD', confidence: 0.7 };
+      return { decision: 'RECORD', confidence: 0.7, cleanedText };
     }
 
     // Auto-RECORD if conversation is too long (8+ messages = 4+ exchanges)
     if (this.conversationHistory.length >= 8) {
       console.log('[Gemini] Fallback: Conversation too long (8+ messages), auto-RECORD');
-      return { decision: 'RECORD', confidence: 0.6 };
+      return { decision: 'RECORD', confidence: 0.6, cleanedText };
     }
 
     // No decision yet
-    return { decision: null, confidence: 0 };
+    return { decision: null, confidence: 0, cleanedText };
   }
 
   /**
