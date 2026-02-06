@@ -230,24 +230,41 @@ export class GeminiChat {
       return { decision: 'RECORD', confidence: 0.9, cleanedText };
     }
 
-    // Fallback: If response sounds like a positive ending, assume RECORD
-    const positiveEndings = [
-      'have a great day',
-      'have a good day', 
-      'have a nice day',
-      'goodbye',
-      'bye',
-      'take care',
-      "i'll pass along",
-      "i'll make sure",
-      "we'll get back to you",
+    // Fallback: Check for BLOCK phrases first (takes priority)
+    const blockPhrases = [
+      'not interested',
+      "we're not interested",
+      'no thank you',
+      'we cannot help',
+      "we can't help",
+      'not accepting',
+      'not taking',
     ];
     
     const lowerResponse = response.toLowerCase();
-    const soundsLikeEnding = positiveEndings.some(phrase => lowerResponse.includes(phrase));
+    const soundsLikeBlock = blockPhrases.some(phrase => lowerResponse.includes(phrase));
     
-    if (soundsLikeEnding && this.conversationHistory.length >= 4) {
-      console.log('[Gemini] Fallback: Detected positive ending without [RECORD], assuming RECORD');
+    if (soundsLikeBlock && this.conversationHistory.length >= 2) {
+      console.log('[Gemini] Fallback: Detected BLOCK phrase without [BLOCK] tag, assuming BLOCK');
+      return { decision: 'BLOCK', confidence: 0.7, cleanedText };
+    }
+
+    // Fallback: Check for RECORD phrases (goodbye/bye removed - they're ambiguous)
+    const recordPhrases = [
+      "i'll pass along",
+      "i'll make sure",
+      "i'll let them know",
+      "i'll relay",
+      'got it,',  // "Got it," followed by more text
+      'message has been',
+      'noted your',
+      "we'll get back to you",
+    ];
+    
+    const soundsLikeRecord = recordPhrases.some(phrase => lowerResponse.includes(phrase));
+    
+    if (soundsLikeRecord && this.conversationHistory.length >= 4) {
+      console.log('[Gemini] Fallback: Detected RECORD phrase without [RECORD] tag, assuming RECORD');
       return { decision: 'RECORD', confidence: 0.7, cleanedText };
     }
 
