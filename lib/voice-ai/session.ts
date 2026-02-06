@@ -65,6 +65,9 @@ export class VoiceAISession {
   private static readonly UTTERANCE_BUFFER_MS = 1500;  // Wait 1.5s for more speech
   private static readonly SHORT_UTTERANCE_WORDS = 5;    // Buffer utterances with ≤5 words
 
+  // Barge-in protection: minimum time AI must be speaking before allowing interrupt
+  private static readonly BARGE_IN_MIN_ELAPSED_MS = 1500;
+
   // Silence detection
   private lastAudioTime = Date.now();
   private readonly SILENCE_THRESHOLD_MS = 1500; // 1.5 seconds of silence
@@ -220,12 +223,27 @@ export class VoiceAISession {
           return;
         }
         
-        // If AI is speaking, this is a barge-in (interrupt)
+        // If AI is speaking, check for barge-in (interrupt)
         if (this.isSpeaking) {
           const elapsedTime = this.responseStartTimestamp 
             ? this.latestMediaTimestamp - this.responseStartTimestamp 
             : 0;
-          console.log(`[Session ${this.config.callSid}] [BARGE-IN] Detected: "${transcript}", elapsed=${elapsedTime}ms, marks=${this.markQueue.length}`);
+          
+          // Don't allow barge-in during final response (goodbye)
+          if (this.decision) {
+            console.log(`[Session ${this.config.callSid}] [BARGE-IN] Ignored (final response playing): "${transcript}", elapsed=${elapsedTime}ms`);
+            return;
+          }
+          
+          // Don't allow barge-in if AI just started speaking (stale STT results)
+          if (elapsedTime < VoiceAISession.BARGE_IN_MIN_ELAPSED_MS) {
+            console.log(`[Session ${this.config.callSid}] [BARGE-IN] Ignored (too early): "${transcript}", elapsed=${elapsedTime}ms < ${VoiceAISession.BARGE_IN_MIN_ELAPSED_MS}ms`);
+            // Queue the transcript for processing after AI finishes
+            this.pendingTranscripts.push(transcript.trim());
+            return;
+          }
+          
+          console.log(`[Session ${this.config.callSid}] [BARGE-IN] Accepted: "${transcript}", elapsed=${elapsedTime}ms, marks=${this.markQueue.length}`);
           
           // Clear Twilio's audio buffer to stop current playback
           if (this.markQueue.length > 0) {
@@ -371,17 +389,10 @@ export class VoiceAISession {
     }
 
     console.log(`[Session ${this.config.callSid}] 🔊 Speaking: "${text}"`);
-    this.isSpeaking = true;  // Set speaking flag
 
     try {
       // Convert text to speech (returns base64 μ-law)
       const audioBase64 = await this.tts.synthesize(text);
-
-      // Record when we start sending this response
-      if (this.responseStartTimestamp === null) {
-        this.responseStartTimestamp = this.latestMediaTimestamp;
-        console.log(`[Session ${this.config.callSid}] [TIMESTAMP] Response start: ${this.responseStartTimestamp}`);
-      }
 
       // Send audio to Twilio (with readyState check)
       const message = {
@@ -395,6 +406,13 @@ export class VoiceAISession {
       if (!this.safeSend(message)) {
         console.warn(`[Session ${this.config.callSid}] Failed to send audio - WebSocket not open`);
         return;
+      }
+
+      // Set speaking flag and timestamp AFTER audio is sent (not during TTS synthesis)
+      this.isSpeaking = true;
+      if (this.responseStartTimestamp === null) {
+        this.responseStartTimestamp = this.latestMediaTimestamp;
+        console.log(`[Session ${this.config.callSid}] [TIMESTAMP] Response start: ${this.responseStartTimestamp}`);
       }
 
       // Send mark to know when audio finishes
