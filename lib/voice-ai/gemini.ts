@@ -88,7 +88,9 @@ EXISTING RELATIONSHIP signals:
 - Be patient with connection issues - ask to repeat if unclear
 - When in doubt after 3+ exchanges, BLOCK
 - Always include a polite message with your tag
-- Keep responses to 1-2 sentences`;
+- Keep responses to 1-2 sentences
+- ALWAYS say "Goodbye" at the end of the conversation (both BLOCK and RECORD)
+- If caller says "Thank you", respond with "You're welcome. Goodbye." + tag`;
 
 export class GeminiChat {
   private conversationHistory: Array<{ role: string; content: string }> = [];
@@ -270,10 +272,14 @@ export class GeminiChat {
     }
 
     // Fallback: Check for RECORD phrases (goodbye/bye removed - they're ambiguous)
+    // These phrases indicate AI is taking a message → should RECORD
     const recordPhrases = [
       "i'll pass along",
+      "i'll pass that",
       "i'll make sure",
       "i'll let them know",
+      "i'll let him know",
+      "i'll let her know",
       "i'll relay",
       'got it,',  // "Got it," followed by more text
       'message has been',
@@ -283,21 +289,30 @@ export class GeminiChat {
     
     const soundsLikeRecord = recordPhrases.some(phrase => lowerResponse.includes(phrase));
     
-    if (soundsLikeRecord && this.conversationHistory.length >= 4) {
+    // Lower threshold to 2 messages - if AI says "I'll pass along", we should RECORD
+    if (soundsLikeRecord && this.conversationHistory.length >= 2) {
       console.log('[Gemini] Fallback: Detected RECORD phrase without [RECORD] tag, assuming RECORD');
       return { decision: 'RECORD', confidence: 0.7, cleanedText };
     }
 
-    // Fallback: "Goodbye" after a successful conversation = RECORD
-    // This handles cases like "You're welcome. Goodbye." after message was taken
+    // Fallback: Polite endings that signal conversation is complete
+    // "You're welcome" alone (after some conversation) = conversation is done
     const hasGoodbye = lowerResponse.includes('goodbye') || lowerResponse.includes('bye');
     const isPoliteEnding = lowerResponse.includes("you're welcome") || 
                            lowerResponse.includes('have a great day') ||
                            lowerResponse.includes('have a good day') ||
                            lowerResponse.includes('take care');
     
+    // If AI says "Goodbye" with polite ending = RECORD
     if (hasGoodbye && isPoliteEnding && this.conversationHistory.length >= 4) {
       console.log('[Gemini] Fallback: Polite goodbye after conversation, assuming RECORD');
+      return { decision: 'RECORD', confidence: 0.7, cleanedText };
+    }
+    
+    // If AI says just "You're welcome." (short response after Thank you) = RECORD
+    // This catches cases where AI doesn't add "Goodbye"
+    if (isPoliteEnding && cleanedText.length < 30 && this.conversationHistory.length >= 4) {
+      console.log('[Gemini] Fallback: Short polite ending, assuming RECORD');
       return { decision: 'RECORD', confidence: 0.7, cleanedText };
     }
 
