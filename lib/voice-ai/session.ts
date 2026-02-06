@@ -57,6 +57,7 @@ export class VoiceAISession {
   private responseStartTimestamp: number | null = null;  // When AI response started
   private markQueue: string[] = [];  // Track pending marks (max 10)
   private readonly MAX_MARK_QUEUE = 10;
+  private shouldEndAfterSpeaking = false;  // Flag to end call after AI finishes speaking
 
   // Silence detection
   private lastAudioTime = Date.now();
@@ -119,6 +120,12 @@ export class VoiceAISession {
             this.isSpeaking = false;
             this.responseStartTimestamp = null;
             console.log(`[Session ${this.config.callSid}] [MARK] AI finished speaking`);
+            
+            // Check if we should end the call now (after final response played)
+            if (this.shouldEndAfterSpeaking) {
+              console.log(`[Session ${this.config.callSid}] Ending call after final response`);
+              setTimeout(() => this.endCall(), 500);  // Small delay for clean ending
+            }
           }
           
           // Process any pending transcripts
@@ -344,17 +351,19 @@ export class VoiceAISession {
    */
   private async handleDecision(): Promise<void> {
     const transcript = this.gemini.getTranscript();
+    const summary = this.gemini.getSummary();  // Get conversation summary
 
     if (this.decision === 'RECORD') {
-      // Send email notification with transcript
+      // Send email notification with transcript and summary
       try {
         await sendVoiceAINotification({
           from: this.config.from,
           timestamp: new Date().toISOString(),
           transcript,
           decision: 'RECORD',
+          summary,  // Include summary in email
         });
-        console.log(`[Session ${this.config.callSid}] Email notification sent`);
+        console.log(`[Session ${this.config.callSid}] Email notification sent with summary`);
       } catch (error) {
         console.error(`[Session ${this.config.callSid}] Failed to send email:`, error);
       }
@@ -363,10 +372,9 @@ export class VoiceAISession {
       console.log(`[Session ${this.config.callSid}] Blocked sales call from ${this.config.from}`);
     }
 
-    // End the call after a short delay
-    setTimeout(() => {
-      this.endCall();
-    }, 2000);
+    // Set flag to end call after AI finishes speaking (not immediately)
+    this.shouldEndAfterSpeaking = true;
+    console.log(`[Session ${this.config.callSid}] Will end call after AI finishes speaking`);
   }
 
   /**
