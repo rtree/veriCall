@@ -52,6 +52,12 @@ export class VoiceAISession {
   private isSpeaking = false;  // True while AI is speaking
   private pendingTranscripts: string[] = [];  // Queue for transcripts while processing
 
+  // Twilio timestamp tracking (for proper barge-in handling)
+  private latestMediaTimestamp = 0;  // Latest media.timestamp from Twilio
+  private responseStartTimestamp: number | null = null;  // When AI response started
+  private markQueue: string[] = [];  // Track pending marks (max 10)
+  private readonly MAX_MARK_QUEUE = 10;
+
   // Silence detection
   private lastAudioTime = Date.now();
   private readonly SILENCE_THRESHOLD_MS = 1500; // 1.5 seconds of silence
@@ -100,8 +106,21 @@ export class VoiceAISession {
 
         case 'mark':
           // Audio playback marker - AI finished speaking
-          console.log(`[Session ${this.config.callSid}] Mark: ${message.mark?.name}`);
-          this.isSpeaking = false;
+          const markName = message.mark?.name || 'unknown';
+          console.log(`[Session ${this.config.callSid}] [MARK] Received: ${markName}, queue=${this.markQueue.length}`);
+          
+          // Remove from queue
+          if (this.markQueue.length > 0) {
+            this.markQueue.shift();
+          }
+          
+          // If no more marks pending, AI finished speaking
+          if (this.markQueue.length === 0) {
+            this.isSpeaking = false;
+            this.responseStartTimestamp = null;
+            console.log(`[Session ${this.config.callSid}] [MARK] AI finished speaking`);
+          }
+          
           // Process any pending transcripts
           await this.processPendingTranscripts();
           break;
@@ -152,9 +171,12 @@ export class VoiceAISession {
     // Convert to Linear16 for STT
     const linear16Buffer = mulawToLinear16(mulawBuffer);
 
+    // Track Twilio's timestamp for barge-in handling
+    this.latestMediaTimestamp = parseInt(media.timestamp || '0', 10);
+
     // Debug: log first few audio chunks
     if (this.audioChunkCount < 5) {
-      console.log(`[Session ${this.config.callSid}] Audio chunk ${this.audioChunkCount + 1}: ${mulawBuffer.length} bytes`);
+      console.log(`[Session ${this.config.callSid}] Audio chunk ${this.audioChunkCount + 1}: ${mulawBuffer.length} bytes, ts=${this.latestMediaTimestamp}`);
     }
     this.audioChunkCount++;
 
@@ -187,10 +209,21 @@ export class VoiceAISession {
         
         // If AI is speaking, this is a barge-in (interrupt)
         if (this.isSpeaking) {
-          console.log(`[Session ${this.config.callSid}] Barge-in detected, processing: "${transcript}"`);
-          // Clear pending and process this immediately
+          const elapsedTime = this.responseStartTimestamp 
+            ? this.latestMediaTimestamp - this.responseStartTimestamp 
+            : 0;
+          console.log(`[Session ${this.config.callSid}] [BARGE-IN] Detected: "${transcript}", elapsed=${elapsedTime}ms, marks=${this.markQueue.length}`);
+          
+          // Clear Twilio's audio buffer to stop current playback
+          if (this.markQueue.length > 0) {
+            this.sendClear();
+          }
+          
+          // Reset state
           this.pendingTranscripts = [];
-          // Note: We can't stop TTS mid-play, but we can process the new input
+          this.markQueue = [];
+          this.responseStartTimestamp = null;
+          this.isSpeaking = false;
         }
         
         // If already processing, queue it
@@ -264,7 +297,13 @@ export class VoiceAISession {
       // Convert text to speech (returns base64 μ-law)
       const audioBase64 = await this.tts.synthesize(text);
 
-      // Send audio to Twilio
+      // Record when we start sending this response
+      if (this.responseStartTimestamp === null) {
+        this.responseStartTimestamp = this.latestMediaTimestamp;
+        console.log(`[Session ${this.config.callSid}] [TIMESTAMP] Response start: ${this.responseStartTimestamp}`);
+      }
+
+      // Send audio to Twilio (with readyState check)
       const message = {
         event: 'media',
         streamSid: this.streamSid,
@@ -273,17 +312,28 @@ export class VoiceAISession {
         },
       };
 
-      this.ws.send(JSON.stringify(message));
+      if (!this.safeSend(message)) {
+        console.warn(`[Session ${this.config.callSid}] Failed to send audio - WebSocket not open`);
+        return;
+      }
 
       // Send mark to know when audio finishes
+      const markName = `speech_${Date.now()}`;
       const markMessage = {
         event: 'mark',
         streamSid: this.streamSid,
         mark: {
-          name: `speech_${Date.now()}`,
+          name: markName,
         },
       };
-      this.ws.send(JSON.stringify(markMessage));
+      
+      if (this.safeSend(markMessage)) {
+        // Track the mark (limit queue size)
+        if (this.markQueue.length < this.MAX_MARK_QUEUE) {
+          this.markQueue.push(markName);
+        }
+        console.log(`[Session ${this.config.callSid}] [MARK] Sent: ${markName}, queue=${this.markQueue.length}`);
+      }
     } catch (error) {
       console.error(`[Session ${this.config.callSid}] TTS error:`, error);
     }
@@ -320,6 +370,40 @@ export class VoiceAISession {
   }
 
   /**
+   * Safely send a message to WebSocket (with readyState check)
+   * @returns true if sent successfully, false otherwise
+   */
+  private safeSend(message: object): boolean {
+    if (this.ws.readyState !== WebSocket.OPEN) {
+      console.warn(`[Session ${this.config.callSid}] WebSocket not open (state=${this.ws.readyState}), cannot send`);
+      return false;
+    }
+    try {
+      this.ws.send(JSON.stringify(message));
+      return true;
+    } catch (error) {
+      console.error(`[Session ${this.config.callSid}] Failed to send message:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Send clear message to stop audio playback (for barge-in)
+   */
+  private sendClear(): void {
+    if (!this.streamSid) return;
+    
+    const clearMessage = {
+      event: 'clear',
+      streamSid: this.streamSid,
+    };
+    
+    if (this.safeSend(clearMessage)) {
+      console.log(`[Session ${this.config.callSid}] [CLEAR] Sent - stopping audio playback`);
+    }
+  }
+
+  /**
    * Reset silence detection timer
    */
   private resetSilenceTimer(): void {
@@ -339,15 +423,7 @@ export class VoiceAISession {
    * End the call
    */
   private endCall(): void {
-    if (this.streamSid) {
-      // Send clear message to stop any pending audio
-      const clearMessage = {
-        event: 'clear',
-        streamSid: this.streamSid,
-      };
-      this.ws.send(JSON.stringify(clearMessage));
-    }
-
+    this.sendClear();
     // Close WebSocket
     this.ws.close();
   }
