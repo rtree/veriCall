@@ -288,6 +288,19 @@ export class GeminiChat {
       return { decision: 'RECORD', confidence: 0.7, cleanedText };
     }
 
+    // Fallback: "Goodbye" after a successful conversation = RECORD
+    // This handles cases like "You're welcome. Goodbye." after message was taken
+    const hasGoodbye = lowerResponse.includes('goodbye') || lowerResponse.includes('bye');
+    const isPoliteEnding = lowerResponse.includes("you're welcome") || 
+                           lowerResponse.includes('have a great day') ||
+                           lowerResponse.includes('have a good day') ||
+                           lowerResponse.includes('take care');
+    
+    if (hasGoodbye && isPoliteEnding && this.conversationHistory.length >= 4) {
+      console.log('[Gemini] Fallback: Polite goodbye after conversation, assuming RECORD');
+      return { decision: 'RECORD', confidence: 0.7, cleanedText };
+    }
+
     // Auto-RECORD if conversation is too long (8+ messages = 4+ exchanges)
     if (this.conversationHistory.length >= 8) {
       console.log('[Gemini] Fallback: Conversation too long (8+ messages), auto-RECORD');
