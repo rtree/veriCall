@@ -129,37 +129,57 @@ veriCall/
 │
 ├── lib/
 │   ├── config.ts                # Twilio, vlayer, chain configuration
-│   └── voice-ai/
-│       ├── session.ts           # Call session lifecycle + utterance buffering
-│       ├── gemini.ts            # AI screening (system prompt + chat + decision parsing)
-│       ├── speech-to-text.ts    # Google STT streaming (phone_call model)
-│       ├── text-to-speech.ts    # Google TTS (μ-law output)
-│       ├── audio-utils.ts       # μ-law ↔ Linear16 codec
-│       ├── email-notify.ts      # SendGrid email (OK/SCAM templates)
-│       └── index.ts             # Session store (create/get/remove)
+│   ├── db.ts                    # Cloud SQL client (IAM auth, decision persistence)
+│   ├── voice-ai/
+│   │   ├── session.ts           # Call session lifecycle + utterance buffering (★ core)
+│   │   ├── gemini.ts            # AI screening (system prompt + chat + decision parsing)
+│   │   ├── speech-to-text.ts    # Google STT streaming (phone_call model)
+│   │   ├── text-to-speech.ts    # Google TTS (μ-law output)
+│   │   ├── audio-utils.ts       # μ-law ↔ Linear16 codec
+│   │   ├── email-notify.ts      # SendGrid email (OK/SCAM templates)
+│   │   └── index.ts             # Session store (create/get/remove)
+│   ├── witness/
+│   │   ├── pipeline.ts          # Witness pipeline: WebProof → ZK → On-Chain (★ proof generation)
+│   │   ├── vlayer-api.ts        # vlayer REST API client
+│   │   ├── on-chain.ts          # Base Sepolia TX submission (viem)
+│   │   ├── decision-store.ts    # Cloud SQL decision data store
+│   │   └── abi.ts               # VeriCallRegistryV2 ABI
+│   └── demo/
+│       └── event-bus.ts         # Global EventEmitter (globalThis singleton for SSE)
 │
 ├── app/
+│   ├── page.tsx                 # Home page
+│   ├── verify/
+│   │   ├── page.tsx             # Trust-minimized verification page (12 checks)
+│   │   └── useVerify.ts         # Client-side verification hook (viem + Base Sepolia RPC)
 │   ├── phone/
 │   │   ├── incoming/route.ts    # Twilio incoming call webhook → TwiML + Stream
 │   │   ├── status/route.ts      # Call status callbacks
 │   │   └── logs/route.ts        # Call log API
-│   │
-│   ├── witness/
-│   │   ├── _lib/
-│   │   │   ├── vlayer-client.ts # vlayer API integration (Web Proof → ZK Proof)
-│   │   │   ├── store.ts         # Witness records (in-memory MVP)
-│   │   │   └── types.ts         # WitnessRecord, DecisionData, ProofStatus
-│   │   ├── list/route.ts        # GET /witness/list — proof records
-│   │   └── verify/[id]/route.ts # GET /witness/verify/:id — verify a proof
-│   │
-│   ├── monitoring/page.tsx      # Dashboard UI
-│   └── api/health/route.ts      # Health check
+│   ├── api/
+│   │   ├── health/route.ts      # Health check
+│   │   ├── explorer/route.ts    # On-chain data Explorer API
+│   │   ├── demo/stream/route.ts # SSE endpoint for live demo (Bearer auth)
+│   │   └── witness/
+│   │       └── decision/[callSid]/route.ts  # Decision API (vlayer Web Proof target)
+│   └── monitoring/page.tsx      # Dashboard UI
 │
-├── playground/
-│   └── vlayer/                  # Experimental vlayer scripts
+├── scripts/
+│   ├── verify.ts                # Trust-minimized verification CLI (14 checks, --deep)
+│   ├── demo.ts                  # Live demo CLI (SSE stream viewer)
+│   ├── check-registry.ts        # CLI registry inspector (V1/V2)
+│   └── deploy-v2.ts             # V2 deployment script (with auto-sync)
+│
+├── contracts/
+│   ├── VeriCallRegistryV2.sol   # V2 Solidity contract (with ZK verification)
+│   ├── RiscZeroMockVerifier.sol # Mock Verifier for development
+│   ├── interfaces/
+│   │   └── IRiscZeroVerifier.sol # RISC Zero standard interface
+│   └── deployment.json          # Deployment info (Single Source of Truth)
 │
 ├── Dockerfile                   # Cloud Run deployment
-└── docs/                        # Additional documentation
+└── .github/workflows/
+    └── deploy.yml               # GitHub Actions CI/CD (auto-deploy on push)
 ```
 
 ## How vlayer Integration Works
@@ -298,6 +318,82 @@ registerCallDecision(callId, callerHash, decision, reason, seal, journalDataAbi,
            as attested by TLSNotary and verified by ZK proof on-chain
 ```
 
+## Trust-Minimized Verification
+
+> **You don't need to trust VeriCall.** Every on-chain record can be independently verified — from your browser or from the command line.
+
+VeriCall provides two verification tools that perform **12–14 automated checks** per record, reading directly from the Base Sepolia blockchain via public RPC. No API keys, no VeriCall servers — just you and the chain.
+
+### Web Verification (`/verify`)
+
+Open **[https://vericall-kkz6k4jema-uc.a.run.app/verify](https://vericall-kkz6k4jema-uc.a.run.app/verify)** in any browser.
+
+- **Phase 1 — Contract Checks (C1–C5)**: Verifies the contract exists, code is deployed, owner is set, verifier address points to MockVerifier, and imageId matches vlayer's guestId
+- **Phase 2 — Per-Record Checks (V1–V7)**: For each on-chain record, verifies the ZK seal format, journal hash integrity (`keccak256`), journal ABI decode, extracted decision/reason match, source URL points to VeriCall's Decision API, and TLSNotary notary key is present
+
+No wallet required. Runs entirely client-side using viem + Base Sepolia public RPC.
+
+### CLI Verification (`scripts/verify.ts`)
+
+```bash
+# Verify all records (12+ checks)
+npx tsx scripts/verify.ts
+
+# Deep mode: re-fetch Decision API URLs to confirm they still return matching data
+npx tsx scripts/verify.ts --deep
+
+# Output Foundry cast commands for manual verification
+npx tsx scripts/verify.ts --cast
+
+# JSON output for programmatic consumption
+npx tsx scripts/verify.ts --json
+
+# Verify a specific record
+npx tsx scripts/verify.ts --record 2
+```
+
+886 lines. 12 checks minimum (C1–C5 + V1–V7), up to 14 with `--deep` (V8–V9: URL re-fetch and content match). Every check shows the on-chain data, the expected value, and the result.
+
+### Check Reference
+
+| Phase | Check | What It Verifies |
+|-------|-------|------------------|
+| Contract | C1 | Contract has deployed bytecode |
+| Contract | C2 | Owner address is set |
+| Contract | C3 | Verifier address points to MockVerifier |
+| Contract | C4 | MockVerifier has deployed bytecode |
+| Contract | C5 | imageId matches vlayer guestId |
+| Record | V1 | ZK seal starts with `0xFFFFFFFF` (RISC Zero Mock selector) |
+| Record | V2 | `journalHash == keccak256(journalDataAbi)` |
+| Record | V3 | Journal ABI decodes to 6 valid fields |
+| Record | V4 | Extracted decision matches record's decision |
+| Record | V5 | Extracted reason matches record's reason |
+| Record | V6 | Source URL matches VeriCall Decision API pattern |
+| Record | V7 | TLSNotary notary key fingerprint is non-zero |
+| Deep | V8 | Decision API URL still responds with valid JSON |
+| Deep | V9 | Fetched decision/reason match on-chain values |
+
+## Live Demo
+
+Watch the entire pipeline in real-time — from phone call to on-chain record — in your terminal:
+
+```bash
+# Connect to production (Cloud Run SSE stream)
+npx tsx scripts/demo.ts
+
+# Connect to local dev server
+npx tsx scripts/demo.ts --local
+```
+
+When a phone call comes in, you see:
+1. 📞 **Call started** — spinner animation while waiting
+2. 🗣️ **Conversation log** — real-time STT transcripts and AI responses
+3. 🤖 **AI Decision** — BLOCK/RECORD with reasoning
+4. 📧 **Email sent** — notification dispatched
+5. 🔐 **Web Proof** → **ZK Proof** → **On-Chain TX** — full witness pipeline with hashes and links
+
+Requires `VERICALL_DEMO_TOKEN` (Bearer auth). The CLI auto-reconnects on disconnect.
+
 ## API Endpoints
 
 | Method | Endpoint | Description |
@@ -305,10 +401,12 @@ registerCallDecision(callId, callerHash, decision, reason, seal, journalDataAbi,
 | POST | `/phone/incoming` | Twilio incoming call webhook |
 | POST | `/phone/status` | Call status callback |
 | GET | `/phone/logs` | Call log history |
-| GET | `/witness/list` | On-chain proof records |
-| GET | `/witness/verify/:id` | Verify a specific proof |
+| GET | `/api/witness/decision/{callSid}` | Decision API (target of vlayer Web Proof) |
+| GET | `/api/explorer` | On-chain records as JSON |
+| GET | `/api/demo/stream` | SSE stream for live demo (Bearer auth) |
 | GET | `/api/health` | Health check |
 | WS | `/stream` | Twilio Media Stream (real-time audio) |
+| — | `/verify` | Trust-minimized verification page (client-side) |
 
 ## Getting Started
 
@@ -397,8 +495,11 @@ gcloud run deploy vericall \
 | CLI registry inspector (V1/V2) | ✅ Implemented |
 | Explorer API (`/api/explorer`) | ✅ Implemented |
 | Single Source of Truth (deployment.json) | ✅ Implemented |
+| Trust-minimized verification page (`/verify`) | ✅ Implemented (12 checks, client-side) |
+| Trust-minimized verification CLI (`scripts/verify.ts`) | ✅ Implemented (14 checks, `--deep`) |
+| Live demo CLI with SSE streaming (`scripts/demo.ts`) | ✅ Implemented |
+| Cloud SQL decision persistence | ✅ Implemented |
 | Production Groth16 verification | 📋 Planned (awaiting vlayer production proofs) |
-| Public verification dashboard | 📋 Planned |
 
 ## License
 
