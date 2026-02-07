@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDecisionForProof } from '@/lib/witness/decision-store';
 
@@ -24,7 +25,15 @@ export async function GET(
     );
   }
 
-  // Return clean JSON that vlayer will attest via TLSNotary
+  // Compute transcript hash (SHA-256) — only the hash is proven via ZK,
+  // not the full transcript text, preserving privacy while enabling verification.
+  const transcriptHash = crypto
+    .createHash('sha256')
+    .update(record.transcript)
+    .digest('hex');
+
+  // Return clean JSON that vlayer will attest via TLSNotary.
+  // JMESPath extracts: ["decision", "reason", "systemPromptHash", "transcriptHash"]
   return NextResponse.json({
     service: 'VeriCall',
     version: '1.0',
@@ -33,6 +42,7 @@ export async function GET(
     reason: record.reason,
     transcript: record.transcript,
     systemPromptHash: record.systemPromptHash,
+    transcriptHash,
     callerHashShort: record.callerHashShort,
     timestamp: record.timestamp,
     conversationTurns: record.conversationTurns,

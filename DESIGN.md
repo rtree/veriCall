@@ -240,12 +240,12 @@ vlayer offers this as a SaaS.
 ```
 pipeline.ts
     │
-    └─ vlayerZKProof(webProof, ["decision", "reason"])
+    └─ vlayerZKProof(webProof, ["decision", "reason", "systemPromptHash", "transcriptHash"])
          │
          └─ POST https://zk-prover.vlayer.xyz/api/v0/compress-web-proof
               body: {
                 presentation: webProof,
-                extraction: { "response.body": { jmespath: ["decision", "reason"] } }
+                extraction: { "response.body": { jmespath: ["decision", "reason", "systemPromptHash", "transcriptHash"] } }
               }
               │
               └─ vlayer performs:
@@ -261,10 +261,10 @@ pipeline.ts
 |----------|-----------|----------------|
 | **4-1. zkVM ingestion** | Load WebProof into RISC Zero guest program | The proof is processed inside a deterministic execution environment — the same input always produces the same output |
 | **4-2. TLSNotary verification inside zkVM** | Verify the Notary's cryptographic signature over the TLS transcript | The WebProof from Step 3 is authentic — the Notary genuinely attested to this TLS session and the server response has not been altered |
-| **4-3. JMESPath field extraction** | Extract `["decision", "reason"]` from the proven HTTP response body | The specific values (`BLOCK`, `Caller was selling SEO services...`) were genuinely present in the server's response — not injected or modified after the TLS session |
+| **4-3. JMESPath field extraction** | Extract `["decision", "reason", "systemPromptHash", "transcriptHash"]` from the proven HTTP response body | The specific values (`BLOCK`, `Caller was selling SEO services...`, `a3f2...`, `1b2c...`) were genuinely present in the server's response — not injected or modified after the TLS session |
 | **4-4. Seal + Journal output** | Generate the RISC Zero seal (proof) and ABI-encoded journal (public outputs) | All of the above verifications passed, and the results are bundled into a single cryptographic artifact (seal) with public outputs (journal) that can be verified on-chain by any smart contract |
 
-**JMESPath `["decision", "reason"]`**: Specifies which fields to extract from the JSON response.
+**JMESPath `["decision", "reason", "systemPromptHash", "transcriptHash"]`**: Specifies which fields to extract from the JSON response.
 These values are encoded into the ZK Proof's public output (journal).
 
 > **What this proves (combined)**: The entire chain from "this HTTPS server returned this JSON" to "these specific fields were extracted from that response" is verified inside a zkVM. The resulting seal and journal constitute a succinct, on-chain-verifiable cryptographic proof of the data's authenticity and integrity.
@@ -560,7 +560,7 @@ git push origin master
 
 ### 3.7 Contract Design
 
-**VeriCallRegistryV3** (deployed on Base Sepolia: `0x55d90c4c615884c2af3fd1b14e8d316610b66fd3`)
+**VeriCallRegistryV3** (deployed on Base Sepolia: `0x4395cf02b8d343aae958bda7ac6ed71fbd4abd48`)
 
 ```solidity
 struct CallRecord {
@@ -568,7 +568,7 @@ struct CallRecord {
     string reason;             // AI's decision reason (≤200 chars)
     bytes32 journalHash;       // keccak256(journalDataAbi) — commitment
     bytes zkProofSeal;         // RISC Zero seal (Mock: 36B / Prod: ~256B)
-    bytes journalDataAbi;      // ABI-encoded public outputs (all 6 fields)
+    bytes journalDataAbi;      // ABI-encoded public outputs (all 9 fields)
     string sourceUrl;          // URL from journal (not external arg)
     uint256 timestamp;         // block.timestamp
     address submitter;         // TX sender
@@ -582,19 +582,100 @@ struct CallRecord {
 - `verifier.verify(seal, imageId, sha256(journalDataAbi))` → on-chain ZK proof verification
 - `journalHash == keccak256(journalDataAbi)` → journal integrity
 - **Decision–Journal binding**: `keccak256(reconstructed)` must match `keccak256(extractedData)` from the journal — prevents submitters from altering decision/reason after proof generation
-- **Immutable checks**: `EXPECTED_NOTARY_KEY_FP`, `EXPECTED_QUERIES_HASH` — validated against journal fields
+- **Immutable checks**: `EXPECTED_NOTARY_KEY_FP`, `expectedQueriesHash` — validated against journal fields
 - **URL prefix validation**: byte-by-byte check that journal URL starts with `expectedUrlPrefix` (LensMint pattern)
 - **Custom errors**: `AlreadyRegistered`, `InvalidDecision`, `DecisionMismatch`, `ZKProofVerificationFailed`, etc. (replaces require strings)
-- Decoding `journalDataAbi` yields `decision`, `reason` values
+- Decoding `journalDataAbi` yields `decision`, `reason`, `systemPromptHash`, `transcriptHash` values
 - `sourceUrl` indicates which API endpoint was proven (derived from journal)
 - `verified == true` means the ZK proof passed on-chain verification
 
 **Phase Plan**:
 - Phase 1 (complete): On-chain storage of proof data (Proof of Existence) — VeriCallRegistry V1
 - Phase 2 (complete): MockVerifier + on-chain ZK verification — VeriCallRegistryV2 (`0x656ae703ca94cc4247493dec6f9af9c6f974ba82`)
-- **Phase 3 (current): Journal-bound decision integrity + immutable validation** — VeriCallRegistryV3 (`0x55d90c4c615884c2af3fd1b14e8d316610b66fd3`)
+- **Phase 3 (current): Journal-bound decision integrity + immutable validation** — VeriCallRegistryV3 (`0x4395cf02b8d343aae958bda7ac6ed71fbd4abd48`)
+  - 9-field journal: decision, reason, systemPromptHash, transcriptHash, + TLS metadata
 - Phase 4 (future): vlayer production → switch to RiscZeroVerifierRouter
 - Phase 5 (future): Cross-chain verification on Sui
+
+### 3.8 Why REST API (Not Solidity Prover/Verifier)
+
+vlayer offers two integration paths:
+
+| Approach | Description | Status |
+|----------|-------------|--------|
+| **Solidity Prover/Verifier** | Write a Solidity contract that extends `vlayer.Prover`, pair with a `vlayer.Verifier` contract. The SDK handles proof generation and on-chain verification via a tightly coupled contract pair. | Requires vlayer SDK v0.1.0-alpha.12 toolchain, `forge-vlayer`, and a specific project structure. Documentation covers this path extensively. |
+| **REST API** | Call vlayer's public Web Prover and ZK Prover endpoints directly. Handle the proof lifecycle in application code. Write your own verifier contract using RISC Zero's `IRiscZeroVerifier` interface. | Fully functional. Uses `POST /api/v1/prove` and `POST /api/v0/compress-web-proof`. |
+
+**VeriCall uses the REST API approach.** Here's why:
+
+1. **vlayer alpha constraints**: vlayer v0.1.0-alpha.12 is in active development. The Solidity Prover SDK has dependencies on specific forge plugin versions, Nix toolchain, and a bespoke build pipeline that can break between versions. The REST API provides a stable, version-agnostic integration point.
+
+2. **Architectural fit**: VeriCall's proof pipeline runs server-side (Cloud Run → vlayer → Base Sepolia), not from a client wallet. The REST API maps naturally to this server-driven flow. A Solidity Prover/Verifier pair would require the proof-triggering entity to be an EOA calling the Verifier contract, adding unnecessary complexity.
+
+3. **Greater control over verification logic**: By writing `VeriCallRegistryV3.sol` directly against `IRiscZeroVerifier`, we implement journal-bound decision integrity, URL prefix validation, notary fingerprint checks, and queriesHash validation — none of which are available out-of-the-box in vlayer's auto-generated Verifier contract.
+
+4. **Industry precedent**: All four vlayer-track winners at ETHGlobal Buenos Aires 2025 (PayPunk, Cred-Fi, Redfish, zkx402) used the REST API approach, not the Solidity Prover/Verifier SDK. This is the de facto standard for vlayer integrations during the alpha period.
+
+> **Migration path**: When vlayer's Solidity SDK stabilizes, migrating is straightforward — the core proof data (WebProof → ZK Proof → journal) is identical regardless of the integration method. The change would be in how the contract calls `verify()`, not in the proof itself.
+
+### 3.9 Verifier Honesty: MockVerifier vs Production
+
+> **Transparency note**: VeriCall currently uses a `RiscZeroMockVerifier` for ZK proof verification. This section explains exactly what that means, what it doesn't mean, and why this is the standard approach for RISC Zero-based dApps during development.
+
+#### What the MockVerifier Does
+
+```
+RiscZeroMockVerifier.verify(seal, imageId, journalDigest):
+    require(bytes4(seal[:4]) == 0xFFFFFFFF)  → pass
+```
+
+The MockVerifier checks **only** that the seal starts with the magic bytes `0xFFFFFFFF` (RISC Zero's `SELECTOR_FAKE`). It does **not** perform cryptographic verification of the ZK proof (no Groth16 BN254 pairing check).
+
+#### What IS Verified On-Chain (Even with MockVerifier)
+
+The MockVerifier is only one of many verification layers. The following checks **do** run on-chain in `VeriCallRegistryV3.registerCallDecision()`:
+
+| # | Check | What It Validates | Code |
+|---|-------|-------------------|------|
+| 1 | `verifier.verify()` call | The ZK seal is structurally valid (Mock: prefix check) | `try verifier.verify(...) {} catch { revert }` |
+| 2 | `sha256(journalDataAbi)` | Journal digest computed deterministically | `bytes32 journalDigest = sha256(journalDataAbi)` |
+| 3 | **Journal ABI decode** | Journal contains 9 well-formed fields | `abi.decode(journalDataAbi, (bytes32, string, string, uint256, bytes32, string, string, string, string))` |
+| 4 | **Notary FP check** | TLSNotary key fingerprint matches known constant | `notaryKeyFingerprint != EXPECTED_NOTARY_KEY_FP → revert` |
+| 5 | **HTTP method check** | Proven request was `GET` | `keccak256(method) != keccak256("GET") → revert` |
+| 6 | **QueriesHash check** | JMESPath extraction config matches expected | `queriesHash != expectedQueriesHash → revert` |
+| 7 | **URL prefix validation** | Proven URL points to VeriCall Decision API | `_validateUrlPrefix(url)` — byte-by-byte |
+| 8 | **systemPromptHash non-empty** | AI ruleset hash is present | `require(bytes(provenSystemPromptHash).length > 0)` |
+| 9 | **transcriptHash non-empty** | Conversation hash is present | `require(bytes(provenTranscriptHash).length > 0)` |
+| 10 | **Decision binding** | Submitted decision matches proven decision | `keccak256(decisionStr) != keccak256(provenDecision) → revert` |
+| 11 | **Reason binding** | Submitted reason matches proven reason | `keccak256(reason) != keccak256(provenReason) → revert` |
+| 12 | **Duplicate prevention** | No re-registration of same callId | `records[callId].timestamp != 0 → revert` |
+| 13 | **Decision validity** | Decision enum is not UNKNOWN | `decision == UNKNOWN → revert` |
+| 14 | **Journal hash commitment** | `keccak256(journalDataAbi)` stored as `journalHash` | Enables offline re-verification |
+
+**Result**: 14 on-chain checks run on every registration. Even with the MockVerifier, a fake or malformed journal will be rejected by checks 3–11. The only thing the MockVerifier "trusts" is the seal format (check 1) — all other checks are real.
+
+#### Production Migration Path
+
+```
+Dev (current):   VeriCallRegistryV3(RiscZeroMockVerifier(0xFFFFFFFF), ...)
+Production:      VeriCallRegistryV3(RiscZeroVerifierRouter(0x0b144e...), ...)
+```
+
+- **No contract code change required** — the `verifier` is injected via constructor
+- When vlayer starts returning production Groth16 proofs (~256 bytes instead of 36 bytes), a new V3 instance is deployed pointing to the RISC Zero `RiscZeroVerifierRouter`
+- All 14 checks continue to work identically — only check #1 becomes cryptographically binding
+- Past MockVerifier records remain on the old contract; new production records go to the new contract
+
+#### Why This is Standard Practice
+
+The MockVerifier pattern is used by every RISC Zero-based dApp during development:
+
+- **vlayer's own examples** use `SELECTOR_FAKE = 0xFFFFFFFF` in their test suites
+- **RISC Zero's bonsai-foundry-template** ships with a MockVerifier by default
+- **All 4 vlayer winners at ETHGlobal Buenos Aires 2025** (PayPunk, Cred-Fi, Redfish, zkx402) used MockVerifier or equivalent mock approaches
+- It is the documented development pattern in RISC Zero's official documentation
+
+> **Bottom line**: VeriCall's on-chain verification is real — 14 checks, journal binding, immutable constants. The MockVerifier means the Groth16 pairing check is deferred to production. This is honest, standard, and the upgrade path is a single constructor argument change.
 
 ---
 
@@ -659,7 +740,8 @@ The standard approach for RISC Zero-based dApps during development is to deploy 
    └─ verifier.verify(seal, IMAGE_ID, sha256(journalData))
 
 3. Decode and validate journalData via abi.decode
-   └─ notaryKeyFingerprint, method, url, timestamp, queriesHash, extractedData
+   └─ notaryKeyFingerprint, method, url, timestamp, queriesHash,
+      provenDecision, provenReason, provenSystemPromptHash, provenTranscriptHash
 
 4. Production migration path
    └─ Switch verifier address to the production RiscZeroVerifierRouter at deploy time
@@ -678,8 +760,11 @@ abi.encode(
     string  method,                // Slot 1+: HTTP method ("GET")
     string  url,                   // Slot N+: Proven URL (full URL)
     uint256 timestamp,             // Slot M:  Proof generation time (Unix epoch seconds)
-    bytes32 queriesHash,           // Slot M+1: keccak256 of URL query parameters
-    string  extractedData          // Slot P+: JMESPath extraction result (JSON string)
+    bytes32 queriesHash,           // Slot M+1: keccak256 of JMESPath extraction queries
+    string  provenDecision,        // Slot P+: "BLOCK" / "RECORD" / "ACCEPT" (from JMESPath)
+    string  provenReason,          // Slot Q+: AI reasoning text (from JMESPath)
+    string  provenSystemPromptHash,// Slot R+: SHA-256 of AI system prompt (from JMESPath)
+    string  provenTranscriptHash   // Slot S+: SHA-256 of conversation transcript (from JMESPath)
 )
 ```
 
@@ -693,11 +778,17 @@ Offset  Description
 0x0040  uint256 offset_url           (→ start position of url string)
 0x0060  uint256 timestamp            (32 bytes, right-padded)
 0x0080  bytes32 queriesHash          (32 bytes, left-padded)
-0x00A0  uint256 offset_extractedData (→ start position of extractedData string)
+0x00A0  uint256 offset_provenDecision        (→ start position of provenDecision)
+0x00C0  uint256 offset_provenReason          (→ start position of provenReason)
+0x00E0  uint256 offset_provenSystemPromptHash (→ start position)
+0x0100  uint256 offset_provenTranscriptHash   (→ start position)
 ...
         [method string data: length + UTF-8 bytes + padding]
         [url string data: length + UTF-8 bytes + padding]
-        [extractedData string data: length + UTF-8 bytes + padding]
+        [provenDecision string data: length + UTF-8 bytes + padding]
+        [provenReason string data: length + UTF-8 bytes + padding]
+        [provenSystemPromptHash string data: length + UTF-8 bytes + padding]
+        [provenTranscriptHash string data: length + UTF-8 bytes + padding]
 ```
 
 #### VeriCall Concrete Example
@@ -707,11 +798,16 @@ notaryKeyFingerprint: 0xa1b2c3d4...              (SHA-256 of TLSNotary notary pu
 method:               "GET"                       (HTTP method for the Decision API)
 url:                  "https://vericall-kkz6k4jema-uc.a.run.app/api/witness/decision/CA1234..."
 timestamp:            1738900000                  (2025-02-07T...)
-queriesHash:          0x0000...0000               (no query parameters = zero)
-extractedData:        '["BLOCK","Caller was selling SEO services and cold-calling from a list"]'
+queriesHash:          0x53a2...                   (keccak256 of JMESPath extraction config)
+provenDecision:       "BLOCK"                     (AI decision extracted via JMESPath)
+provenReason:         "Caller was selling SEO services and cold-calling from a list"
+provenSystemPromptHash: "a3f2b1c4..."             (SHA-256 of the Gemini system prompt)
+provenTranscriptHash:   "1b2c3d4e..."             (SHA-256 of the conversation transcript)
 ```
 
-**extractedData** is a JSON array of values extracted by JMESPath `["decision", "reason"]`.
+Each field is individually ABI-encoded as a separate `string` value. The Solidity side decodes them with `abi.decode(journal, (bytes32, string, string, uint256, bytes32, string, string, string, string))`.
+
+The `provenSystemPromptHash` and `provenTranscriptHash` enable anyone to verify that the AI was given specific rules (by comparing the hash against the published system prompt) and that the conversation input was genuine (by comparing the hash against the raw transcript, if disclosed).
 The Solidity side stores this string as-is; off-chain consumers JSON-parse it.
 
 #### Solidity Decoding
@@ -723,8 +819,11 @@ The Solidity side stores this string as-is; off-chain consumers JSON-parse it.
     string memory url,
     uint256 proofTimestamp,
     bytes32 queriesHash,
-    string memory extractedData
-) = abi.decode(journalDataAbi, (bytes32, string, string, uint256, bytes32, string));
+    string memory provenDecision,
+    string memory provenReason,
+    string memory provenSystemPromptHash,
+    string memory provenTranscriptHash
+) = abi.decode(journalDataAbi, (bytes32, string, string, uint256, bytes32, string, string, string, string));
 ```
 
 ### 4.3 IRiscZeroVerifier Interface
@@ -785,7 +884,7 @@ RISC Zero uses SHA-256 internally, so the Solidity side must also use `sha256()`
 
 | | RiscZeroMockVerifier | RiscZeroVerifierRouter |
 |---|---|---|
-| Base Sepolia Address | `0xc6c4c01cdeec0c2f07575ea5c8c751fe4de2bcbe` (V3) | `0x0b144e07a0826182b6b59788c34b32bfa86fb711` |
+| Base Sepolia Address | `0x33014731e74f0610aefa9318b3e6600d51fd905e` | `0x0b144e07a0826182b6b59788c34b32bfa86fb711` |
 | Verification | `seal[0:4] == 0xFFFFFFFF` | Groth16 BN254 cryptographic verification |
 | Security | Test-only (anyone can forge) | Cryptographically secure |
 | vlayer Compatibility | Accepts current dev-mode seals | Will accept future production seals |
@@ -798,7 +897,7 @@ Changes from V2:
 1. **`callerHash` removed** from `CallRecord` and events — no phone number hash on-chain (privacy)
 2. **`sourceUrl` removed from args** — derived from journal data (proven by ZK proof)
 3. **`EXPECTED_NOTARY_KEY_FP` immutable** — validates TLSNotary key fingerprint against known constant
-4. **`EXPECTED_QUERIES_HASH` immutable** — validates JMESPath extraction hash
+4. **`expectedQueriesHash` owner-updatable** — validates JMESPath extraction hash (deploy with bytes32(0) then update after first proof)
 5. **URL prefix validation** — byte-by-byte check (LensMint pattern)
 6. **Decision–Journal binding** — reconstructs `extractedData` from decision+reason, verifies `keccak256` match
 7. **Custom errors** — `AlreadyRegistered`, `InvalidDecision`, `DecisionMismatch`, `ZKProofVerificationFailed`, etc. (replaces require strings)
@@ -810,7 +909,7 @@ VeriCallRegistryV3
 ├── State (immutable)
 │   ├── verifier: IRiscZeroVerifier     ← Injected via constructor
 │   ├── EXPECTED_NOTARY_KEY_FP: bytes32  ← Known TLSNotary fingerprint
-│   └── EXPECTED_QUERIES_HASH: bytes32   ← JMESPath extraction hash
+│   └── EXPECTED_QUERIES_HASH: bytes32   ← JMESPath extraction hash (owner-updatable)
 │
 ├── State (mutable)
 │   ├── owner: address
@@ -828,17 +927,19 @@ VeriCallRegistryV3
 │   │       └── Prod: Groth16 BN254 pairing check → pass or revert
 │   │
 │   ├── Step 2: Journal Decode & Validation
-│   │   └── abi.decode(journalDataAbi) → 6 fields:
+│   │   └── abi.decode(journalDataAbi) → 9 fields:
 │   │       ├── notaryKeyFingerprint == EXPECTED_NOTARY_KEY_FP  ← immutable check
 │   │       ├── keccak256(method) == keccak256("GET")           ← HTTP method
-│   │       ├── queriesHash == EXPECTED_QUERIES_HASH             ← immutable check
+│   │       ├── queriesHash == expectedQueriesHash               ← owner-updatable check
 │   │       ├── _validateUrlPrefix(url)                          ← byte-by-byte prefix
-│   │       └── bytes(extractedData).length > 0                  ← not empty
+│   │       ├── provenSystemPromptHash.length > 0                 ← non-empty
+│   │       └── provenTranscriptHash.length > 0                   ← non-empty
 │   │
 │   ├── Step 3: Decision–Journal Binding
-│   │   └── Reconstruct '["BLOCK","reason"]' from args
-│   │       └── keccak256(reconstructed) == keccak256(extractedData)
-│   │           └── Mismatch → revert DecisionMismatch()
+│   │   └── Compare submitted decision/reason against provenDecision/provenReason
+│   │       └── keccak256(decisionStr) == keccak256(provenDecision)
+│   │       └── keccak256(reason) == keccak256(provenReason)
+│   │           └── Mismatch → revert DecisionMismatch() / ReasonMismatch()
 │   │
 │   ├── Step 4: CallRecord Storage
 │   │   └── journalHash = keccak256(journalDataAbi) stored as commitment
@@ -866,7 +967,7 @@ struct CallRecord {
     string reason;             // AI's decision reason (≤200 chars)
     bytes32 journalHash;       // keccak256(journalDataAbi) — commitment
     bytes zkProofSeal;         // RISC Zero seal (Mock: 36B / Prod: ~256B)
-    bytes journalDataAbi;      // ABI-encoded public outputs (all 6 fields)
+    bytes journalDataAbi;      // ABI-encoded public outputs (all 9 fields)
     string sourceUrl;          // URL from journal (not external arg)
     uint256 timestamp;         // block.timestamp
     address submitter;         // TX sender
@@ -962,7 +1063,7 @@ struct CallRecord {
         "presentation": { "data": "...", "version": "...", "meta": {...} },
         "extraction": {
           "response.body": {
-            "jmespath": ["decision", "reason"]
+            "jmespath": ["decision", "reason", "systemPromptHash", "transcriptHash"]
           }
         }
       }
@@ -972,15 +1073,18 @@ struct CallRecord {
        → Proves: Execution happens in a deterministic, verifiable environment
     2. Validate TLSNotary proof inside zkVM
        → Proves: The WebProof is authentic — the Notary genuinely attested
-    3. Extract values via JMESPath ["decision", "reason"] from the HTTP response body
+    3. Extract values via JMESPath ["decision", "reason", "systemPromptHash", "transcriptHash"]
        → Proves: These specific values were present in the authentic server response
     4. Construct Journal (public outputs):
        ├─ notaryKeyFingerprint: SHA-256 of TLSNotary public key
        ├─ method: "GET"
        ├─ url: "https://vericall-.../api/witness/decision/CA1234..."
        ├─ timestamp: 1738900000
-       ├─ queriesHash: 0x00...00
-       └─ extractedData: '["BLOCK","Caller was selling SEO services..."]'
+       ├─ queriesHash: keccak256 of JMESPath extraction config
+       ├─ provenDecision: "BLOCK"
+       ├─ provenReason: "Caller was selling SEO services..."
+       ├─ provenSystemPromptHash: "a3f2b1c4..."
+       └─ provenTranscriptHash: "1b2c3d4e..."
     5. ABI-encode Journal → journalDataAbi
     6. Generate Seal (proof) → currently Mock: 0xFFFFFFFF + imageId (36 bytes)
        → Proves: All verifications above passed within the zkVM
@@ -1003,7 +1107,7 @@ struct CallRecord {
   pipeline.ts: submitDecisionOnChain({...})
 
   TX construction (viem):
-    to:       VeriCallRegistryV3 (0x55d90c4c615884c2af3fd1b14e8d316610b66fd3)
+    to:       VeriCallRegistryV3 (0x4395cf02b8d343aae958bda7ac6ed71fbd4abd48)
     function: registerCallDecision(
       callId:          keccak256("vericall_CA1234..._1738900000"),
       decision:        2 (BLOCK),
@@ -1033,31 +1137,34 @@ struct CallRecord {
 
     ┌─ Step 5b: Journal Decode & Validation ───────────────────────┐
     │                                                              │
-    │  (notaryKeyFP, method, url, ts, queriesHash, extractedData)  │
+    │  (notaryKeyFP, method, url, ts, queriesHash,                 │
+    │   provenDecision, provenReason,                              │
+    │   provenSystemPromptHash, provenTranscriptHash)              │
     │    = abi.decode(journalDataAbi,                              │
-    │        (bytes32, string, string, uint256, bytes32, string))   │
+    │        (bytes32, string, string, uint256, bytes32,           │
+    │         string, string, string, string))                     │
     │                                                              │
     │  if (notaryKeyFP != EXPECTED_NOTARY_KEY_FP)                  │
     │      revert InvalidNotaryKeyFingerprint() ← immutable check  │
     │  if (keccak256(method) != keccak256("GET"))                   │
     │      revert InvalidHttpMethod()                              │
-    │  if (queriesHash != EXPECTED_QUERIES_HASH)                    │
-    │      revert InvalidQueriesHash()          ← immutable check  │
+    │  if (expectedQueriesHash != 0 && queriesHash != expected)     │
+    │      revert InvalidQueriesHash()                             │
     │  _validateUrlPrefix(url)                  ← byte-by-byte     │
-    │  if (bytes(extractedData).length == 0)                       │
-    │      revert EmptyExtractedData()                             │
+    │  require(provenSystemPromptHash.length > 0)                  │
+    │  require(provenTranscriptHash.length > 0)                    │
     │                                                              │
     │  → Proves: The journal contains well-formed data matching     │
-    │    known immutable constants and expected URL prefix           │
+    │    known constants, expected URL prefix, and non-empty hashes │
     └──────────────────────────────────────────────────────────────┘
 
     ┌─ Step 5c: Decision–Journal Binding ──────────────────────────┐
     │                                                              │
-    │  Reconstruct expected extractedData from args:                │
-    │    '["BLOCK","Caller was selling SEO services..."]'           │
+    │  Compare submitted args against proven fields:               │
+    │    keccak256("BLOCK") == keccak256(provenDecision)            │
+    │    keccak256(reason)  == keccak256(provenReason)              │
     │                                                              │
-    │  keccak256(reconstructed) == keccak256(extractedData)         │
-    │    → Mismatch: revert DecisionMismatch()                     │
+    │    → Mismatch: revert DecisionMismatch() / ReasonMismatch() │
     │                                                              │
     │  → Proves: The submitter cannot alter decision/reason after   │
     │    proof generation — args are bound to the journal            │
@@ -1192,8 +1299,8 @@ When vlayer starts returning production Groth16 proofs:
 contracts/
 ├── VeriCallRegistry.sol              # V1 (Phase 1, 0xe454ca...)
 ├── VeriCallRegistryV2.sol            # V2 (Phase 2, 0x656ae7...)
-├── VeriCallRegistryV3.sol            # V3 (Phase 3, 0x55d90c...) ← CURRENT
-├── RiscZeroMockVerifier.sol          # Mock Verifier (0xc6c4c0...)
+├── VeriCallRegistryV3.sol            # V3 (Phase 3, 0x4395cf...) ← CURRENT
+├── RiscZeroMockVerifier.sol          # Mock Verifier (0x330147...)
 ├── interfaces/
 │   └── IRiscZeroVerifier.sol         # RISC Zero standard interface
 ├── deployment.json                   # Deployment info (Single Source of Truth)

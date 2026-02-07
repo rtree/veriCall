@@ -30,10 +30,10 @@ import { baseSepolia } from 'viem/chains';
 // ═══════════════════════════════════════════════════════════════
 
 const CONFIG = {
-  registry: '0x9beb87effdac68baf13b505b7e1515f9d43e6ad2' as `0x${string}`,
-  mockVerifier: '0xd447c1342f7350ec5f0af60f8ed98e33b8c78ea1' as `0x${string}`,
+  registry: '0x4395cf02b8d343aae958bda7ac6ed71fbd4abd48' as `0x${string}`,
+  mockVerifier: '0x33014731e74f0610aefa9318b3e6600d51fd905e' as `0x${string}`,
   deployer: '0x485A974140923524a74B0D72aF117852F31B412D' as `0x${string}`,
-  deployBlock: 37354216n,
+  deployBlock: 37362314n,
   imageId: '0x6e251f4d993427d02a4199e1201f3b54462365d7c672a51be57f776d509b47eb',
   rpcUrl: 'https://sepolia.base.org',
   basescan: 'https://sepolia.basescan.org',
@@ -54,10 +54,10 @@ const REGISTRY_ABI = [
   { type: 'function', name: 'verifier', inputs: [], outputs: [{ name: '', type: 'address' }], stateMutability: 'view' },
   { type: 'function', name: 'callIds', inputs: [{ name: '', type: 'uint256' }], outputs: [{ name: '', type: 'bytes32' }], stateMutability: 'view' },
   { type: 'function', name: 'getRecord', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: '', type: 'tuple', components: [{ name: 'decision', type: 'uint8' }, { name: 'reason', type: 'string' }, { name: 'journalHash', type: 'bytes32' }, { name: 'zkProofSeal', type: 'bytes' }, { name: 'journalDataAbi', type: 'bytes' }, { name: 'sourceUrl', type: 'string' }, { name: 'timestamp', type: 'uint256' }, { name: 'submitter', type: 'address' }, { name: 'verified', type: 'bool' }] }], stateMutability: 'view' },
-  { type: 'function', name: 'getProvenData', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: 'notaryKeyFingerprint', type: 'bytes32' }, { name: 'method', type: 'string' }, { name: 'url', type: 'string' }, { name: 'proofTimestamp', type: 'uint256' }, { name: 'queriesHash', type: 'bytes32' }, { name: 'provenDecision', type: 'string' }, { name: 'provenReason', type: 'string' }], stateMutability: 'view' },
+  { type: 'function', name: 'getProvenData', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: 'notaryKeyFingerprint', type: 'bytes32' }, { name: 'method', type: 'string' }, { name: 'url', type: 'string' }, { name: 'proofTimestamp', type: 'uint256' }, { name: 'queriesHash', type: 'bytes32' }, { name: 'provenDecision', type: 'string' }, { name: 'provenReason', type: 'string' }, { name: 'provenSystemPromptHash', type: 'string' }, { name: 'provenTranscriptHash', type: 'string' }], stateMutability: 'view' },
   { type: 'function', name: 'verifyJournal', inputs: [{ name: 'callId', type: 'bytes32' }, { name: 'journalData', type: 'bytes' }], outputs: [{ name: '', type: 'bool' }], stateMutability: 'view' },
   { type: 'function', name: 'EXPECTED_NOTARY_KEY_FP', inputs: [], outputs: [{ name: '', type: 'bytes32' }], stateMutability: 'view' },
-  { type: 'function', name: 'EXPECTED_QUERIES_HASH', inputs: [], outputs: [{ name: '', type: 'bytes32' }], stateMutability: 'view' },
+  { type: 'function', name: 'expectedQueriesHash', inputs: [], outputs: [{ name: '', type: 'bytes32' }], stateMutability: 'view' },
   { type: 'function', name: 'expectedUrlPrefix', inputs: [], outputs: [{ name: '', type: 'string' }], stateMutability: 'view' },
 ] as const;
 
@@ -146,6 +146,10 @@ interface RecordVerification {
     url: string;
     proofTimestamp: string;
     queriesHash: string;
+    provenDecision: string;
+    provenReason: string;
+    provenSystemPromptHash: string;
+    provenTranscriptHash: string;
     extractedData: string;
   };
   deepCheck?: {
@@ -503,7 +507,11 @@ async function verifyRecord(
     url: '' as string,
     proofTimestamp: 0,
     queriesHash: '' as string,
-    extractedData: '' as string,
+    provenDecision: '' as string,
+    provenReason: '' as string,
+    provenSystemPromptHash: '' as string,
+    provenTranscriptHash: '' as string,
+    extractedData: '' as string,  // reconstructed for backward compat
   };
   let provenDataValid = false;
   try {
@@ -517,12 +525,16 @@ async function verifyRecord(
       url: pd[2] || '',
       proofTimestamp: Number(pd[3] || 0),
       queriesHash: pd[4] || '',
-      extractedData: pd[5] || '',
+      provenDecision: pd[5] || '',
+      provenReason: pd[6] || '',
+      provenSystemPromptHash: pd[7] || '',
+      provenTranscriptHash: pd[8] || '',
+      extractedData: `${pd[5] || ''}|${pd[6] || ''}`,  // reconstructed summary
     };
     const notaryNonZero = provenData.notaryKeyFingerprint !== '0x' + '0'.repeat(64);
     const methodGet = provenData.method === 'GET';
     const urlNonEmpty = provenData.url.length > 0;
-    const dataPresent = provenData.extractedData.length > 0;
+    const dataPresent = provenData.provenDecision.length > 0;
     provenDataValid = notaryNonZero && methodGet && urlNonEmpty && dataPresent;
   } catch { /* will be marked failed */ }
 
@@ -622,6 +634,10 @@ async function verifyRecord(
         ? new Date(provenData.proofTimestamp * 1000).toISOString()
         : 'N/A',
       queriesHash: provenData.queriesHash,
+      provenDecision: provenData.provenDecision,
+      provenReason: provenData.provenReason,
+      provenSystemPromptHash: provenData.provenSystemPromptHash,
+      provenTranscriptHash: provenData.provenTranscriptHash,
       extractedData: provenData.extractedData,
     },
     deepCheck,
@@ -726,7 +742,7 @@ function buildCastCommands(report: VerificationReport): string[] {
     commands.push(`cast call ${CONFIG.registry} "getRecord(bytes32)" ${rec.callId} ${rpc}`);
     commands.push(``);
     commands.push(`# Decode proven data (TLSNotary + HTTP metadata)`);
-    commands.push(`cast call ${CONFIG.registry} "getProvenData(bytes32)(bytes32,string,string,uint256,bytes32,string,string)" ${rec.callId} ${rpc}`);
+    commands.push(`cast call ${CONFIG.registry} "getProvenData(bytes32)(bytes32,string,string,uint256,bytes32,string,string,string,string)" ${rec.callId} ${rpc}`);
     commands.push(``);
     commands.push(`# Verify journal integrity on-chain`);
     // We need the actual journal data hex
@@ -838,7 +854,7 @@ function printSummary(report: VerificationReport): void {
   console.log('');
   console.log(`  ${C.MG}Option B — Use Foundry (fully independent, no VeriCall code):${C.R}`);
   console.log(`  ${C.D}  $ cast call ${CONFIG.registry} "getStats()(uint256,uint256,uint256,uint256)" --rpc-url ${CONFIG.rpcUrl}${C.R}`);
-  console.log(`  ${C.D}  $ cast call ${CONFIG.registry} "getProvenData(bytes32)(bytes32,string,string,uint256,bytes32,string,string)" <callId> --rpc-url ${CONFIG.rpcUrl}${C.R}`);
+  console.log(`  ${C.D}  $ cast call ${CONFIG.registry} "getProvenData(bytes32)(bytes32,string,string,uint256,bytes32,string,string,string,string)" <callId> --rpc-url ${CONFIG.rpcUrl}${C.R}`);
   console.log(`  ${C.D}  # Run: npx tsx scripts/verify.ts --cast   for all commands${C.R}`);
   console.log('');
   console.log(`  ${C.MG}Option C — BaseScan (zero setup):${C.R}`);

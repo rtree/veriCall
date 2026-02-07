@@ -193,6 +193,10 @@ async function main() {
       url: '' as string,
       proofTimestamp: 0,
       queriesHash: '' as string,
+      provenDecision: '' as string,
+      provenReason: '' as string,
+      provenSystemPromptHash: '' as string,
+      provenTranscriptHash: '' as string,
       extractedData: '' as string,
     };
 
@@ -210,7 +214,11 @@ async function main() {
           url: pd[2] || pd.url || '',
           proofTimestamp: Number(pd[3] || pd.proofTimestamp || 0),
           queriesHash: pd[4] || pd.queriesHash || '',
-          extractedData: pd[5] || pd.extractedData || '',
+          provenDecision: pd[5] || '',
+          provenReason: pd[6] || '',
+          provenSystemPromptHash: pd[7] || '',
+          provenTranscriptHash: pd[8] || '',
+          extractedData: `${pd[5] || ''}|${pd[6] || ''}`,
         };
       } catch {
         // getProvenData may fail for records without journal data
@@ -282,6 +290,12 @@ async function main() {
       }
       if (provenData.extractedData) {
         console.log(`  ${CYAN}Extracted:${RESET}   ${provenData.extractedData}`);
+      }
+      if (provenData.provenSystemPromptHash) {
+        console.log(`  ${CYAN}Prompt ♯:${RESET}    ${provenData.provenSystemPromptHash.slice(0, 24)}...`);
+      }
+      if (provenData.provenTranscriptHash) {
+        console.log(`  ${CYAN}Transcript ♯:${RESET}${provenData.provenTranscriptHash.slice(0, 24)}...`);
       }
       if (provenData.notaryKeyFingerprint && provenData.notaryKeyFingerprint !== '0x' + '0'.repeat(64)) {
         console.log(`  ${CYAN}Notary FP:${RESET}  ${(provenData.notaryKeyFingerprint as string).slice(0, 18)}...`);

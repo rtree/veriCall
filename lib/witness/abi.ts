@@ -2,7 +2,7 @@
  * VeriCallRegistry Contract ABIs
  * V1: 0xe454ca755219310b2728d39db8039cbaa7abc3b8 (Base Sepolia) — Phase 1
  * V2: 0x656ae703ca94cc4247493dec6f9af9c6f974ba82 (Base Sepolia) — Phase 2 (MockVerifier + verify)
- * V3: 0x55d90c4c615884c2af3fd1b14e8d316610b66fd3 (Base Sepolia) — Phase 3 (journal-bound decision integrity)
+ * V3: 0x4395cf02b8d343aae958bda7ac6ed71fbd4abd48 (Base Sepolia) — Phase 3 (journal-bound decision integrity, 9-field journal)
  */
 
 // ─── V3 ABI (Active) ──────────────────────────────────────────
@@ -67,6 +67,8 @@ export const VERICALL_REGISTRY_ABI = [
       { name: 'queriesHash', type: 'bytes32' },
       { name: 'provenDecision', type: 'string' },
       { name: 'provenReason', type: 'string' },
+      { name: 'provenSystemPromptHash', type: 'string' },
+      { name: 'provenTranscriptHash', type: 'string' },
     ],
     stateMutability: 'view',
   },
@@ -129,7 +131,7 @@ export const VERICALL_REGISTRY_ABI = [
   },
   {
     type: 'function',
-    name: 'EXPECTED_QUERIES_HASH',
+    name: 'expectedQueriesHash',
     inputs: [],
     outputs: [{ name: '', type: 'bytes32' }],
     stateMutability: 'view',
@@ -145,6 +147,13 @@ export const VERICALL_REGISTRY_ABI = [
     type: 'function',
     name: 'updateImageId',
     inputs: [{ name: '_imageId', type: 'bytes32' }],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'updateExpectedQueriesHash',
+    inputs: [{ name: '_hash', type: 'bytes32' }],
     outputs: [],
     stateMutability: 'nonpayable',
   },

@@ -19,7 +19,7 @@ import "./interfaces/IRiscZeroVerifier.sol";
  *         This eliminates the V2 vulnerability where a submitter could supply
  *         a valid proof but alter the decision label in the external arguments.
  *
- *         Journal format (ABI-encoded, 7 fields from vlayer ZK Prover):
+ *         Journal format (ABI-encoded, 9 fields from vlayer ZK Prover):
  *           bytes32 notaryKeyFingerprint
  *           string  method              — "GET"
  *           string  url                 — proven Decision API URL
@@ -27,6 +27,8 @@ import "./interfaces/IRiscZeroVerifier.sol";
  *           bytes32 queriesHash         — keccak256 of JMESPath extraction queries
  *           string  provenDecision      — "BLOCK" / "RECORD" / "ACCEPT" (from JMESPath)
  *           string  provenReason        — AI reasoning text (from JMESPath)
+ *           string  provenSystemPromptHash — SHA-256 of AI system prompt (from JMESPath)
+ *           string  provenTranscriptHash   — SHA-256 of conversation transcript (from JMESPath)
  *
  *         Verifier injection (same as V2):
  *           - Dev/Hackathon: RiscZeroMockVerifier(0xFFFFFFFF)
@@ -42,7 +44,7 @@ contract VeriCallRegistryV3 {
         string reason;             // AI reasoning (bound to journal extractedData)
         bytes32 journalHash;       // keccak256(journalDataAbi) — commitment
         bytes zkProofSeal;         // RISC Zero seal
-        bytes journalDataAbi;      // ABI-encoded public outputs (6 fields)
+        bytes journalDataAbi;      // ABI-encoded public outputs (9 fields)
         string sourceUrl;          // URL from journal (not external arg)
         uint256 timestamp;         // block.timestamp when registered
         address submitter;         // TX sender address
@@ -62,8 +64,10 @@ contract VeriCallRegistryV3 {
     bytes32 public immutable EXPECTED_NOTARY_KEY_FP;
 
     /// @notice Expected JMESPath extraction queries hash
-    /// @dev    keccak256 of the extraction config used in ZK compression
-    bytes32 public immutable EXPECTED_QUERIES_HASH;
+    /// @dev    keccak256 of the extraction config used in ZK compression.
+    ///         Non-immutable so owner can update after first successful proof
+    ///         with expanded JMESPath. Set to bytes32(0) to skip check (dev mode).
+    bytes32 public expectedQueriesHash;
 
     /// @notice Expected URL prefix for the Decision API
     /// @dev    Journal URL must start with this prefix
@@ -130,7 +134,7 @@ contract VeriCallRegistryV3 {
         verifier = _verifier;
         imageId = _imageId;
         EXPECTED_NOTARY_KEY_FP = _expectedNotaryFP;
-        EXPECTED_QUERIES_HASH = _expectedQueriesHash;
+        expectedQueriesHash = _expectedQueriesHash;
         expectedUrlPrefix = _expectedUrlPrefix;
         owner = msg.sender;
     }
@@ -150,16 +154,17 @@ contract VeriCallRegistryV3 {
      *
      * @dev    Flow:
      *         1. verifier.verify(seal, imageId, sha256(journal)) — ZK check
-     *         2. abi.decode(journal) — extract 6 fields
+     *         2. abi.decode(journal) — extract 9 fields
      *         3. Validate notaryKeyFP, method, queriesHash, URL prefix
-     *         4. Reconstruct extractedData from decision+reason, compare hash
-     *         5. Store CallRecord (decision/reason/url derived from journal)
+     *         4. Validate systemPromptHash and transcriptHash are non-empty
+     *         5. Reconstruct extractedData from decision+reason, compare hash
+     *         6. Store CallRecord (decision/reason/url derived from journal)
      *
      * @param callId          Unique call identifier (keccak256 of call SID + timestamp)
      * @param decision        AI decision (must match journal extractedData)
      * @param reason          AI reasoning (must match journal extractedData)
      * @param zkProofSeal     RISC Zero seal from vlayer ZK Prover
-     * @param journalDataAbi  ABI-encoded public outputs from vlayer (6 fields)
+     * @param journalDataAbi  ABI-encoded public outputs from vlayer (9 fields)
      */
     function registerCallDecision(
         bytes32 callId,
@@ -180,7 +185,7 @@ contract VeriCallRegistryV3 {
 
         emit ProofVerified(callId, imageId, journalDigest);
 
-        // ── Step 2: Decode Journal ─────────────────────────────
+        // ── Step 2: Decode Journal (9 fields) ─────────────────
         (
             bytes32 notaryKeyFingerprint,
             string memory method,
@@ -188,8 +193,10 @@ contract VeriCallRegistryV3 {
             ,  // timestamp — informational
             bytes32 queriesHash,
             string memory provenDecision,
-            string memory provenReason
-        ) = abi.decode(journalDataAbi, (bytes32, string, string, uint256, bytes32, string, string));
+            string memory provenReason,
+            string memory provenSystemPromptHash,
+            string memory provenTranscriptHash
+        ) = abi.decode(journalDataAbi, (bytes32, string, string, uint256, bytes32, string, string, string, string));
 
         // ── Step 3: Validate Journal Fields ────────────────────
         if (notaryKeyFingerprint != EXPECTED_NOTARY_KEY_FP)
@@ -198,11 +205,16 @@ contract VeriCallRegistryV3 {
         if (keccak256(bytes(method)) != keccak256("GET"))
             revert InvalidHttpMethod();
 
-        if (queriesHash != EXPECTED_QUERIES_HASH)
+        // bytes32(0) = skip check (dev mode, queriesHash discovered after first proof)
+        if (expectedQueriesHash != bytes32(0) && queriesHash != expectedQueriesHash)
             revert InvalidQueriesHash();
 
         // URL prefix check (byte-by-byte, like LensMint)
         _validateUrlPrefix(url);
+
+        // Validate proven hashes are non-empty
+        require(bytes(provenSystemPromptHash).length > 0, "Empty systemPromptHash");
+        require(bytes(provenTranscriptHash).length > 0, "Empty transcriptHash");
 
         // ── Step 4: Decision–Journal Binding ───────────────────
         // vlayer proves decision and reason as separate JMESPath fields.
@@ -295,7 +307,7 @@ contract VeriCallRegistryV3 {
     // ─── View: Decoded Proven Data ─────────────────────────────
 
     /**
-     * @notice Read decoded journal data for a call record.
+     * @notice Read decoded journal data for a call record (9 fields).
      */
     function getProvenData(bytes32 callId) external view returns (
         bytes32 notaryKeyFingerprint,
@@ -304,11 +316,13 @@ contract VeriCallRegistryV3 {
         uint256 proofTimestamp,
         bytes32 queriesHash,
         string memory provenDecision,
-        string memory provenReason
+        string memory provenReason,
+        string memory provenSystemPromptHash,
+        string memory provenTranscriptHash
     ) {
         bytes memory journal = records[callId].journalDataAbi;
         require(journal.length > 0, "Record not found");
-        return abi.decode(journal, (bytes32, string, string, uint256, bytes32, string, string));
+        return abi.decode(journal, (bytes32, string, string, uint256, bytes32, string, string, string, string));
     }
 
     // ─── View: Standard Accessors ──────────────────────────────
@@ -339,6 +353,12 @@ contract VeriCallRegistryV3 {
     function updateImageId(bytes32 _imageId) external onlyOwner {
         emit ImageIdUpdated(imageId, _imageId);
         imageId = _imageId;
+    }
+
+    /// @notice Update the expected queries hash after expanding JMESPath.
+    /// @dev    Deploy with bytes32(0) to skip check, then update after first successful proof.
+    function updateExpectedQueriesHash(bytes32 _hash) external onlyOwner {
+        expectedQueriesHash = _hash;
     }
 
     function transferOwnership(address newOwner) external onlyOwner {

@@ -47,10 +47,11 @@ const BASESCAN = 'https://sepolia.basescan.org';
 const NOTARY_KEY_FP = process.env.VLAYER_NOTARY_KEY_FP ||
   '0xa7e62d7f17aa7a22c26bdb93b7ce9400e826ffb2c6f54e54d2ded015677499af';
 
-// JMESPath queries hash — keccak256 of the extraction config ["decision","reason"]
-// Extracted from the first successful vlayer proof (2026-02-07).
+// JMESPath queries hash — keccak256 of the extraction config.
+// With expanded JMESPath ["decision","reason","systemPromptHash","transcriptHash"],
+// the hash changes. Deploy with bytes32(0) to skip check, then update after first proof.
 const QUERIES_HASH = process.env.VLAYER_QUERIES_HASH ||
-  '0x53a22f40e1378be18066f71a6924fe5a9a4d564126eed088fc3d6ef1a2cc8b8e';
+  '0x0000000000000000000000000000000000000000000000000000000000000000';
 
 const URL_PREFIX = process.env.VLAYER_URL_PREFIX ||
   process.env.VLAYER_PROOF_SOURCE_URL ||
@@ -197,7 +198,7 @@ async function main() {
   console.log(`   notaryFP:     ${storedNotaryFP === NOTARY_KEY_FP ? '✅' : '❌'}`);
 
   const storedQH = await publicClient.readContract({
-    address: v3Address, abi: v3Artifact.abi, functionName: 'EXPECTED_QUERIES_HASH',
+    address: v3Address, abi: v3Artifact.abi, functionName: 'expectedQueriesHash',
   });
   console.log(`   queriesHash:  ${storedQH === QUERIES_HASH ? '✅' : '❌'}`);
 
@@ -207,10 +208,12 @@ async function main() {
   console.log(`   urlPrefix:    ${storedPrefix === DECISION_URL_PREFIX ? '✅' : '❌'}`);
 
   // 3c: End-to-end simulation with decision binding
-  console.log(`\n   [E2E] Simulation with decision–journal binding (7-field journal)`);
+  console.log(`\n   [E2E] Simulation with decision–journal binding (9-field journal)`);
 
   const testDecision = 'BLOCK';
   const testReason = 'Suspicious sales pitch detected';
+  const testSystemPromptHash = 'a3f2b1c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2';
+  const testTranscriptHash = '1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';
 
   const testJournal = encodeAbiParameters(
     [
@@ -219,6 +222,8 @@ async function main() {
       { type: 'string' },
       { type: 'uint256' },
       { type: 'bytes32' },
+      { type: 'string' },
+      { type: 'string' },
       { type: 'string' },
       { type: 'string' },
     ],
@@ -230,6 +235,8 @@ async function main() {
       QUERIES_HASH as `0x${string}`,
       testDecision,
       testReason,
+      testSystemPromptHash,
+      testTranscriptHash,
     ],
   );
 

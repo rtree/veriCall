@@ -259,7 +259,7 @@ POST https://zk-prover.vlayer.xyz/api/v0/compress-web-proof
   "presentation": { <web proof from Step 2> },
   "extraction": {
     "response.body": {
-      "jmespath": ["decision", "reason"]
+      "jmespath": ["decision", "reason", "systemPromptHash", "transcriptHash"]
     }
   }
 }
@@ -267,12 +267,15 @@ POST https://zk-prover.vlayer.xyz/api/v0/compress-web-proof
 → Returns: { zkProof: "0xffffffff...", journalDataAbi: "0x000000..." }
 ```
 
-The `journalDataAbi` is an ABI-encoded tuple containing:
+The `journalDataAbi` is an ABI-encoded tuple of 9 fields:
 - `notaryKeyFingerprint` — which notary signed the proof
 - `method` / `url` — the exact HTTP request proven (GET to VeriCall's Decision API)
 - `timestamp` — when the TLS session occurred (not self-reported)
-- `queriesHash` — hash of the URL query parameters (prevents query substitution)
-- `extractedData` — the decision and reason extracted from VeriCall's response (e.g., `["BLOCK","Caller was selling SEO services..."]`)
+- `queriesHash` — hash of the JMESPath extraction config (prevents query substitution)
+- `provenDecision` — the decision extracted from VeriCall's response (e.g., `"BLOCK"`)
+- `provenReason` — the AI's reasoning extracted from the response
+- `provenSystemPromptHash` — SHA-256 of the AI's ruleset, extracted from the response
+- `provenTranscriptHash` — SHA-256 of the conversation transcript, extracted from the response
 
 #### Step 4: On-Chain Registration + ZK Verification (Base Sepolia)
 
@@ -286,17 +289,18 @@ registerCallDecision(callId, decision, reason, zkProofSeal, journalDataAbi)
     │   └─ Calls IRiscZeroVerifier — reverts if proof is invalid
     │   └─ emit ProofVerified(callId, imageId, journalDigest)
     │
-    ├─ Step B: Journal Decode & Validation (V3 immutable checks)
-    │   abi.decode(journalDataAbi) → 6 fields:
+    ├─ Step B: Journal Decode & Validation (V3, 9-field journal)
+    │   abi.decode(journalDataAbi) → 9 fields:
     │   ├─ notaryKeyFingerprint == EXPECTED_NOTARY_KEY_FP  ← immutable check
     │   ├─ method == "GET"                                 ← Valid HTTP method
-    │   ├─ queriesHash == EXPECTED_QUERIES_HASH            ← immutable check
+    │   ├─ queriesHash == expectedQueriesHash              ← owner-updatable check
     │   ├─ URL starts with expectedUrlPrefix               ← byte-by-byte check
-    │   └─ bytes(extractedData).length > 0                 ← Extracted data exists
+    │   ├─ bytes(provenSystemPromptHash).length > 0        ← AI ruleset hash present
+    │   └─ bytes(provenTranscriptHash).length > 0          ← Conversation hash present
     │
-    ├─ Step C: Decision–Journal Binding (V3)
-    │   Reconstruct '["BLOCK","reason"]' from args
-    │   └─ keccak256(reconstructed) == keccak256(extractedData) ← prevents tampering
+    ├─ Step C: Decision–Journal Binding (V3, direct string comparison)
+    │   keccak256(decision) == keccak256(provenDecision)   ← decision integrity
+    │   keccak256(reason) == keccak256(provenReason)        ← reason integrity
     │
     ├─ Step D: Immutable Record Storage
     │   records[callId] = CallRecord{ ..., sourceUrl: url (from journal), verified: true }
@@ -308,16 +312,16 @@ registerCallDecision(callId, decision, reason, zkProofSeal, journalDataAbi)
 
 **Key design**: The `verifier` is injected via constructor (`IRiscZeroVerifier` interface), enabling a seamless upgrade path from MockVerifier (development) to RiscZeroVerifierRouter (production Groth16) without changing contract code.
 
-**Reading proven data**: Anyone can call `getProvenData(callId)` to retrieve the decoded journal fields (notary key fingerprint, HTTP method, URL, timestamp, extraction hash, extracted values) directly from the contract.
+**Reading proven data**: Anyone can call `getProvenData(callId)` to retrieve all 9 decoded journal fields (notary key fingerprint, HTTP method, URL, timestamp, queriesHash, provenDecision, provenReason, provenSystemPromptHash, provenTranscriptHash) directly from the contract.
 
 ### What Gets Proven
 
 | Element | How It's Verified |
 |---------|-------------------|
-| **The AI ruleset** | `systemPromptHash` — anyone can check the hash matches the company's published rules |
-| **The input** | `transcriptHash` — the conversation that was fed to the AI is hashed and recorded |
+| **The AI ruleset** | `provenSystemPromptHash` — SHA-256 of the SYSTEM_PROMPT, extracted via JMESPath and proven in the ZK journal. Anyone can hash the published rules and compare. |
+| **The input** | `provenTranscriptHash` — SHA-256 of the conversation transcript, extracted via JMESPath and proven in the ZK journal. Proves which conversation the AI actually evaluated. |
 | **The decision is authentic** | Web Proof via TLSNotary — cryptographic proof that VeriCall's Decision API genuinely returned this decision and reason |
-| **The output wasn't tampered** | ZK Proof + Decision–Journal binding — on-chain keccak256 comparison ensures decision/reason match the proven journal |
+| **The output wasn't tampered** | ZK Proof + Decision–Journal binding — on-chain keccak256 comparison ensures submitted decision/reason match `provenDecision`/`provenReason` from the journal |
 | **When it happened** | `tlsTimestamp` from the TLS session itself (not self-reported by the company) |
 | **Privacy preserved** | No phone number data on-chain; API keys are redacted; ZK proof hides raw data |
 
@@ -383,7 +387,7 @@ npx tsx scripts/verify.ts --record 2
 | Contract | C5 | imageId matches vlayer guestId |
 | Record | V1 | ZK seal starts with `0xFFFFFFFF` (RISC Zero Mock selector) |
 | Record | V2 | `journalHash == keccak256(journalDataAbi)` |
-| Record | V3 | Journal ABI decodes to 6 valid fields |
+| Record | V3 | Journal ABI decodes to 9 valid fields |
 | Record | V4 | Extracted decision matches record's decision |
 | Record | V5 | Extracted reason matches record's reason |
 | Record | V6 | Source URL matches VeriCall Decision API pattern |
@@ -519,10 +523,11 @@ gcloud run deploy vericall \
 | Email notifications (OK/SCAM templates) | ✅ Production |
 | AI-powered call summaries (Gemini) | ✅ Production |
 | Utterance buffering for speech quality | ✅ Production |
-| vlayer Web Proof generation | ✅ Implemented |
-| vlayer ZK Proof compression | ✅ Implemented |
+| vlayer Web Proof generation | ✅ Implemented (REST API) |
+| vlayer ZK Proof compression | ✅ Implemented (REST API) |
 | On-chain proof submission (Base Sepolia) | ✅ Implemented |
-| On-chain ZK verification (VeriCallRegistryV3) | ✅ Implemented (MockVerifier + journal binding) |
+| On-chain ZK verification (VeriCallRegistryV3) | ✅ Implemented (14 on-chain checks, 9-field journal) |
+| systemPromptHash / transcriptHash in journal | ✅ Proven via JMESPath extraction |
 | CLI registry inspector (V1/V3) | ✅ Implemented |
 | Explorer API (`/api/explorer`) | ✅ Implemented |
 | Single Source of Truth (deployment.json) | ✅ Implemented |
@@ -532,6 +537,12 @@ gcloud run deploy vericall \
 | Live demo web page (`/demo`) | ✅ Implemented |
 | Cloud SQL decision persistence | ✅ Implemented |
 | Production Groth16 verification | 📋 Planned (awaiting vlayer production proofs) |
+
+### Verification Architecture Notes
+
+**REST API integration**: VeriCall uses vlayer's REST API (`/api/v1/prove`, `/api/v0/compress-web-proof`) rather than the Solidity Prover/Verifier SDK. This is the standard integration method for vlayer during the alpha period — all four vlayer-track winners at ETHGlobal Buenos Aires 2025 used the same approach. The REST API provides a stable integration point while vlayer's Solidity SDK is under active development. See [DESIGN.md § 3.8](DESIGN.md) for details.
+
+**MockVerifier**: The on-chain `verifier` is currently a `RiscZeroMockVerifier` that validates seal format (`0xFFFFFFFF` prefix) but does not perform Groth16 pairing checks. However, 14 other on-chain checks still run — journal ABI decode, notary fingerprint validation, URL prefix check, queriesHash validation, systemPromptHash/transcriptHash presence, and decision-journal binding via keccak256. The upgrade to production Groth16 requires only deploying a new contract instance with `RiscZeroVerifierRouter` in the constructor — no code changes needed. See [DESIGN.md § 3.9](DESIGN.md) for the full breakdown.
 
 ## License
 
