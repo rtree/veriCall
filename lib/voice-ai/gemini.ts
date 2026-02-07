@@ -232,6 +232,11 @@ export class GeminiChat {
     const isBlock = upperResponse.includes('[BLOCK]') || upperResponse.includes('【BLOCK】') || upperResponse.includes('【BLOCK');
     const isRecord = upperResponse.includes('[RECORD]') || upperResponse.includes('【RECORD】') || upperResponse.includes('【RECORD');
 
+    // Bare decision words at start of response (Gemini sometimes omits brackets)
+    // e.g. "RECORD. Okay, and what is your name?" or "BLOCK. We're not interested."
+    const bareBlockAtStart = /^\s*BLOCK[.:\s]/i.test(response);
+    const bareRecordAtStart = /^\s*RECORD[.:\s]/i.test(response);
+
     // Remove tags from response text
     cleanedText = response
       .replace(/\[BLOCK\]/gi, '')
@@ -240,9 +245,12 @@ export class GeminiChat {
       .replace(/【RECORD】/gi, '')
       .replace(/【BLOCK/gi, '')
       .replace(/【RECORD/gi, '')
+      .replace(/^\s*BLOCK[.:\s]\s*/i, '')
+      .replace(/^\s*RECORD[.:\s]\s*/i, '')
       .trim();
 
-    if (isBlock) {
+    if (isBlock || bareBlockAtStart) {
+      if (bareBlockAtStart && !isBlock) console.log('[Gemini] Detected bare BLOCK at start of response (no brackets)');
       // If response is just the tag with no text, provide a default message
       if (!cleanedText || cleanedText.length < 10) {
         cleanedText = "Thank you for calling, but we're not interested at this time. Goodbye.";
@@ -250,7 +258,8 @@ export class GeminiChat {
       }
       return { decision: 'BLOCK', confidence: 0.9, cleanedText };
     }
-    if (isRecord) {
+    if (isRecord || bareRecordAtStart) {
+      if (bareRecordAtStart && !isRecord) console.log('[Gemini] Detected bare RECORD at start of response (no brackets)');
       if (!cleanedText || cleanedText.length < 10) {
         cleanedText = "Got it, I'll pass along your message. Have a great day!";
         console.log('[Gemini] Added fallback message for RECORD');
@@ -287,6 +296,18 @@ export class GeminiChat {
       "i'll let him know",
       "i'll let her know",
       "i'll relay",
+      "i'll transfer",
+      "i'll connect",
+      // "I will" variants (Gemini sometimes doesn't contract)
+      "i will pass along",
+      "i will pass that",
+      "i will make sure",
+      "i will let them know",
+      "i will let him know",
+      "i will let her know",
+      "i will relay",
+      "i will transfer",
+      "i will connect",
       'got it,',  // "Got it," followed by more text
       'message has been',
       'noted your',
@@ -320,6 +341,13 @@ export class GeminiChat {
     if (isPoliteEnding && cleanedText.length < 30 && this.conversationHistory.length >= 4) {
       console.log('[Gemini] Fallback: Short polite ending, assuming RECORD');
       return { decision: 'RECORD', confidence: 0.7, cleanedText };
+    }
+
+    // If AI says "Goodbye" after a meaningful conversation (4+ messages) = RECORD
+    // Catches cases like "Thank you, Araki. I'll transfer you to sales. Goodbye."
+    if (hasGoodbye && this.conversationHistory.length >= 4) {
+      console.log('[Gemini] Fallback: Goodbye after 4+ messages, assuming RECORD');
+      return { decision: 'RECORD', confidence: 0.65, cleanedText };
     }
 
     // Auto-RECORD if conversation is too long (12+ messages = 6+ exchanges)
