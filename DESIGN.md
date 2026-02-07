@@ -1,23 +1,23 @@
 # VeriCall — System Design Document
 
-> AI 電話受付の判定結果を、ZK 証明でオンチェーンに記録するシステム
+> Anchoring AI call-screening decisions on-chain with ZK proofs
 
 ---
 
-## 1. 全体概要
+## 1. Overview
 
-### 1.1 VeriCall とは何か
+### 1.1 What Is VeriCall?
 
-VeriCall は **AI 電話受付** と **ブロックチェーン証明** を組み合わせたシステムである。
+VeriCall is a system that combines **AI phone screening** with **blockchain-backed proofs**.
 
-1. 電話がかかってくると、AI が発信者と会話してスクリーニングする
-2. AI が「営業/スパム（BLOCK）」か「正当な用件（RECORD）」かを判定する
-3. その **判定結果を vlayer の TLSNotary + ZK 証明** で改ざん不可能にする
-4. 証明付きの判定結果を **Base Sepolia（EVM チェーン）** に記録する
+1. When a phone call arrives, an AI converses with the caller and screens the call
+2. The AI decides whether the call is "spam/sales (BLOCK)" or "legitimate (RECORD)"
+3. That **decision is made tamper-proof via vlayer TLSNotary + ZK proofs**
+4. The proof-backed decision is recorded on **Base Sepolia (EVM chain)**
 
-これにより、「AI が本当にこの判定を下した」ことを誰でも検証できる。
+This allows anyone to verify that "the AI truly made this decision."
 
-### 1.2 全体フロー（End-to-End）
+### 1.2 End-to-End Flow
 
 ```
 ┌──────────┐    ┌──────────┐    ┌──────────────────────────────────────┐
@@ -63,105 +63,105 @@ VeriCall は **AI 電話受付** と **ブロックチェーン証明** を組�
                                                   └──────────────────────┘
 ```
 
-### 1.3 なぜこの構成なのか
+### 1.3 Why This Architecture?
 
-| 問い | 答え |
-|------|------|
-| なぜ AI 電話受付？ | 営業・スパム電話を自動でブロックし、正当な電話だけ転送/記録するため |
-| なぜ ZK 証明？ | AI の判定結果が事後改ざんされていないことを第三者が検証できるようにするため |
-| なぜ TLSNotary？ | VeriCall サーバーが返した JSON を「このサーバーが確かにこの内容を返した」と暗号的に証明するため |
-| なぜオンチェーン？ | 証明データを永続的・改ざん不可能な場所に保存し、誰でも閲覧・検証可能にするため |
+| Question | Answer |
+|----------|--------|
+| Why AI phone screening? | To automatically block spam/sales calls and only forward or record legitimate ones |
+| Why ZK proofs? | So a third party can verify that the AI's decision has not been tampered with after the fact |
+| Why TLSNotary? | To cryptographically prove "this server really returned this JSON" for the VeriCall Decision API response |
+| Why on-chain? | To store proof data in a permanent, tamper-proof location that anyone can view and verify |
 
 ---
 
-## 2. 個別パート詳細
+## 2. Component Details
 
-### 2.1 電話着信 → AI スクリーニング
+### 2.1 Incoming Call → AI Screening
 
-#### 着信ルーティング
+#### Call Routing
 
 ```
 Twilio (PSTN) ──POST──→ /phone/incoming (Webhook)
                               │
-                              ├─ ホワイトリスト番号 → 即転送 (TwiML <Dial>)
+                              ├─ Whitelisted number → Forward immediately (TwiML <Dial>)
                               │
-                              └─ 未知番号 → AI スクリーニング
+                              └─ Unknown number → AI screening
                                    │
-                                   └─ TwiML <Connect><Stream> で WebSocket 接続
+                                   └─ TwiML <Connect><Stream> to open WebSocket
 ```
 
-**ファイル**: [app/phone/incoming/route.ts](app/phone/incoming/route.ts)
-- Twilio が着信時に POST する Webhook エンドポイント
-- `router.ts` で判断: ホワイトリスト → 即転送 / それ以外 → AI
+**File**: [app/phone/incoming/route.ts](app/phone/incoming/route.ts)
+- Webhook endpoint that Twilio POSTs to on incoming calls
+- `router.ts` decides: whitelist → forward / otherwise → AI
 
-**ファイル**: [app/phone/_lib/twiml-builder.ts](app/phone/_lib/twiml-builder.ts)
-- AI スクリーニングの場合、`<Connect><Stream>` TwiML を返す
-- Twilio が `wss://{host}/stream` に WebSocket 接続を開始
+**File**: [app/phone/_lib/twiml-builder.ts](app/phone/_lib/twiml-builder.ts)
+- For AI screening, returns `<Connect><Stream>` TwiML
+- Twilio opens a WebSocket connection to `wss://{host}/stream`
 
-#### WebSocket ストリーミング
+#### WebSocket Streaming
 
 ```
 Twilio Media Stream ──WS──→ server.ts (/stream)
                                   │
-                                  └─ VoiceAISession 作成
+                                  └─ Create VoiceAISession
                                        │
-                                       ├─ μ-law audio → Linear16 変換
-                                       ├─ Google STT (リアルタイム音声認識)
-                                       ├─ Gemini AI (会話 + 判定)
-                                       ├─ Google TTS (音声合成)
-                                       └─ μ-law audio → Twilio へ送信
+                                       ├─ μ-law audio → Linear16 conversion
+                                       ├─ Google STT (real-time speech recognition)
+                                       ├─ Gemini AI (conversation + decision)
+                                       ├─ Google TTS (speech synthesis)
+                                       └─ μ-law audio → send to Twilio
 ```
 
-**ファイル**: [server.ts](server.ts)
-- Next.js + WebSocket サーバー（カスタムサーバー）
-- `/stream` パスで `ws.upgrade` を処理
-- `VoiceAISession` を callSid ごとに生成・管理
+**File**: [server.ts](server.ts)
+- Custom server: Next.js + WebSocket
+- Handles `ws.upgrade` on the `/stream` path
+- Creates and manages `VoiceAISession` per callSid
 
-**ファイル**: [lib/voice-ai/session.ts](lib/voice-ai/session.ts) — **中核ファイル**
-- 1通話 = 1セッション。以下を管理:
-  - **STT**: Google Cloud Speech-to-Text（リアルタイムストリーミング）
-  - **Gemini**: `@google/genai` SDK で会話 + 判定
+**File**: [lib/voice-ai/session.ts](lib/voice-ai/session.ts) — **Core file**
+- 1 call = 1 session. Manages:
+  - **STT**: Google Cloud Speech-to-Text (real-time streaming)
+  - **Gemini**: `@google/genai` SDK for conversation + decision
   - **TTS**: Google Cloud Text-to-Speech → μ-law 8kHz
-  - **Barge-in**: 発話者が AI の発話を遮った時の割り込み処理
-  - **Utterance buffering**: 短い発話を 1.5 秒バッファして結合
+  - **Barge-in**: Interruption handling when the caller talks over the AI
+  - **Utterance buffering**: Merges short utterances with a 1.5s buffer
 
-#### AI 判定ロジック（Gemini）
+#### AI Decision Logic (Gemini)
 
-**ファイル**: [lib/voice-ai/gemini.ts](lib/voice-ai/gemini.ts)
+**File**: [lib/voice-ai/gemini.ts](lib/voice-ai/gemini.ts)
 
-System Prompt のインテントベース分類:
+Intent-based classification via System Prompt:
 
-| 判定 | 意味 | シグナル例 |
-|------|------|-----------|
-| `BLOCK` | 営業・スパム | 「提案がある」「コスト削減できる」「リストで見つけた」 |
-| `RECORD` | 正当な用件 | 「折り返し電話」「〇〇さんいますか？」「見積り送った」 |
+| Decision | Meaning | Example Signals |
+|----------|---------|-----------------|
+| `BLOCK` | Spam / sales | "I have a proposal", "Cut your costs", "Found you on a list" |
+| `RECORD` | Legitimate business | "Returning a call", "Is Mr. X available?", "Sent a quote" |
 
-- 3ターン以上の会話後、確信度が高まった時点で判定
-- JSON 形式で `{ decision: "BLOCK" | "RECORD", response: "..." }` を返す
-- 判定後、最後の応答を話し終えてから通話終了
+- After 3+ turns of conversation, decides when confidence is high
+- Returns JSON: `{ decision: "BLOCK" | "RECORD", response: "..." }`
+- After deciding, finishes the last response before ending the call
 
-### 2.2 判定後の処理（3 並行タスク）
+### 2.2 Post-Decision Processing (3 Parallel Tasks)
 
-AI が `BLOCK` or `RECORD` を決定すると、`handleDecision()` が 3 つの処理を起動:
+When the AI decides `BLOCK` or `RECORD`, `handleDecision()` kicks off 3 tasks:
 
 ```
 handleDecision()
     │
-    ├─ 1. Email 通知 (SendGrid)
-    │     └─ 判定結果 + 要約 + 会話履歴をメール送信
+    ├─ 1. Email Notification (SendGrid)
+    │     └─ Send decision + summary + conversation history via email
     │
-    ├─ 2. Cloud SQL 保存 (storeDecisionForProof)
-    │     └─ vlayer Web Proof 用にデータを永続化
+    ├─ 2. Cloud SQL Persistence (storeDecisionForProof)
+    │     └─ Persist data for vlayer Web Proof generation
     │
     └─ 3. Witness Pipeline (createWitness) ← fire-and-forget
-          └─ Web Proof → ZK Proof → On-chain (詳細は 2.3)
+          └─ Web Proof → ZK Proof → On-chain (details in 2.3)
 ```
 
-### 2.3 Witness Pipeline（証明の生成とオンチェーン記録）
+### 2.3 Witness Pipeline (Proof Generation and On-Chain Recording)
 
-これが VeriCall の核心部分。**「AI がこの判定を下した」ことの暗号的証明** を生成する。
+This is the heart of VeriCall — generating **cryptographic proof that "the AI made this decision."**
 
-#### ステップ 1: Cloud SQL に判定を保存
+#### Step 1: Store Decision in Cloud SQL
 
 ```
 session.ts handleDecision()
@@ -170,22 +170,24 @@ session.ts handleDecision()
          └─ INSERT INTO decision_records (call_sid, decision, reason, transcript, ...)
 ```
 
-**ファイル**: [lib/witness/decision-store.ts](lib/witness/decision-store.ts)
-- `decision_records` テーブルに UPSERT
-- 1 時間の TTL（`expires_at`）付き — 証明生成に必要な期間だけ保持
-- `systemPromptHash`: Gemini の System Prompt の SHA-256 ハッシュも保存
+**File**: [lib/witness/decision-store.ts](lib/witness/decision-store.ts)
+- UPSERT into the `decision_records` table
+- 1-hour TTL (`expires_at`) — retained only long enough for proof generation
+- `systemPromptHash`: Also stores the SHA-256 hash of the Gemini System Prompt
 
-#### ステップ 2: Decision API がデータを提供
+> **What this proves**: Nothing yet — this step simply persists the raw decision data so that a publicly accessible API can serve it to the vlayer prover in the next step.
+
+#### Step 2: Decision API Serves the Data
 
 ```
 vlayer Web Prover ──GET──→ /api/witness/decision/{callSid}
                                   │
-                                  └─ Cloud SQL から読み出し → JSON 返却
+                                  └─ Read from Cloud SQL → return JSON
 ```
 
-**ファイル**: [app/api/witness/decision/[callSid]/route.ts](app/api/witness/decision/%5BcallSid%5D/route.ts)
+**File**: [app/api/witness/decision/[callSid]/route.ts](app/api/witness/decision/%5BcallSid%5D/route.ts)
 
-返却 JSON:
+Response JSON:
 ```json
 {
   "service": "VeriCall",
@@ -201,10 +203,12 @@ vlayer Web Prover ──GET──→ /api/witness/decision/{callSid}
 }
 ```
 
-**なぜ Cloud SQL が必要か**: vlayer Web Prover は外部 HTTP GET でこの URL にアクセスする。
-Cloud Run のインスタンスメモリは永続化されないため、判定データを DB に保存する必要がある。
+**Why Cloud SQL is needed**: The vlayer Web Prover accesses this URL via an external HTTP GET.
+Cloud Run instance memory is not persistent, so decision data must be stored in a database.
 
-#### ステップ 3: vlayer Web Proof（TLSNotary）
+> **What this proves**: Nothing yet — this is the data source that the vlayer Web Prover will fetch and cryptographically attest to. The key point is that this URL is served via HTTPS (TLS), making it eligible for TLSNotary attestation.
+
+#### Step 3: vlayer Web Proof (TLSNotary)
 
 ```
 pipeline.ts
@@ -214,22 +218,24 @@ pipeline.ts
          └─ POST https://web-prover.vlayer.xyz/api/v1/prove
               body: { url: "https://vericall-.../api/witness/decision/{sid}" }
               │
-              └─ vlayer が TLSNotary MPC プロトコルで:
-                   1. VeriCall サーバーに TLS 接続
-                   2. MPC で TLS セッションを共同実行
-                   3. 「このサーバーが、この JSON を返した」を証明
-                   4. WebProof オブジェクトを返却
+              └─ vlayer performs TLSNotary MPC protocol:
+                   1. Establishes TLS connection to VeriCall server
+                   2. Co-executes TLS session via MPC
+                   3. Proves "this server returned this JSON"
+                   4. Returns a WebProof object
 ```
 
-**ファイル**: [lib/witness/vlayer-api.ts](lib/witness/vlayer-api.ts)
-- `generateWebProof()`: vlayer Web Prover REST API を呼び出し
-- 認証: `x-client-id` + `Authorization: Bearer {apiKey}`
+**File**: [lib/witness/vlayer-api.ts](lib/witness/vlayer-api.ts)
+- `generateWebProof()`: Calls the vlayer Web Prover REST API
+- Authentication: `x-client-id` + `Authorization: Bearer {apiKey}`
 
-**TLSNotary とは**: TLS 通信を MPC（マルチパーティ計算）で分割実行し、
-サーバーの応答内容を第三者が検証可能な形で証明する技術。
-vlayer はこれを SaaS として提供している。
+**What is TLSNotary?**: A protocol that splits TLS execution via MPC (Multi-Party Computation),
+enabling third-party verification of server responses.
+vlayer offers this as a SaaS.
 
-#### ステップ 4: vlayer ZK Proof（RISC Zero → Groth16）
+> **What this proves**: That the VeriCall Decision API server genuinely returned a specific JSON response containing a specific `decision` and `reason` for a specific `callSid`. The Notary cryptographically co-signs the TLS session without ever seeing the plaintext — it only holds half the encryption key. This guarantees the data was not fabricated or tampered with after the fact.
+
+#### Step 4: vlayer ZK Proof (RISC Zero → Groth16)
 
 ```
 pipeline.ts
@@ -242,17 +248,28 @@ pipeline.ts
                 extraction: { "response.body": { jmespath: ["decision", "reason"] } }
               }
               │
-              └─ vlayer が:
-                   1. WebProof を RISC Zero zkVM で検証
-                   2. JMESPath で指定フィールド (decision, reason) を抽出
-                   3. Groth16 BN254 に圧縮（EVM 検証可能）
-                   4. { zkProof (seal), journalDataAbi } を返却
+              └─ vlayer performs:
+                   1. Feeds WebProof into RISC Zero zkVM guest program
+                   2. Validates the TLSNotary proof inside the zkVM
+                   3. Extracts specified fields (decision, reason) via JMESPath
+                   4. Outputs { zkProof (seal), journalDataAbi }
 ```
 
-**JMESPath `["decision", "reason"]`**: JSON レスポンスから抽出するフィールド。
-ZK Proof の public output（journal）にこれらの値がエンコードされる。
+**What each sub-step proves**:
 
-#### ステップ 5: Base Sepolia オンチェーン記録
+| Sub-step | Operation | What It Proves |
+|----------|-----------|----------------|
+| **4-1. zkVM ingestion** | Load WebProof into RISC Zero guest program | The proof is processed inside a deterministic execution environment — the same input always produces the same output |
+| **4-2. TLSNotary verification inside zkVM** | Verify the Notary's cryptographic signature over the TLS transcript | The WebProof from Step 3 is authentic — the Notary genuinely attested to this TLS session and the server response has not been altered |
+| **4-3. JMESPath field extraction** | Extract `["decision", "reason"]` from the proven HTTP response body | The specific values (`BLOCK`, `Caller was selling SEO services...`) were genuinely present in the server's response — not injected or modified after the TLS session |
+| **4-4. Seal + Journal output** | Generate the RISC Zero seal (proof) and ABI-encoded journal (public outputs) | All of the above verifications passed, and the results are bundled into a single cryptographic artifact (seal) with public outputs (journal) that can be verified on-chain by any smart contract |
+
+**JMESPath `["decision", "reason"]`**: Specifies which fields to extract from the JSON response.
+These values are encoded into the ZK Proof's public output (journal).
+
+> **What this proves (combined)**: The entire chain from "this HTTPS server returned this JSON" to "these specific fields were extracted from that response" is verified inside a zkVM. The resulting seal and journal constitute a succinct, on-chain-verifiable cryptographic proof of the data's authenticity and integrity.
+
+#### Step 5: On-Chain Recording on Base Sepolia
 
 ```
 pipeline.ts
@@ -262,43 +279,45 @@ pipeline.ts
          zkProofSeal, journalDataAbi, sourceUrl
        })
          │
-         └─ VeriCallRegistry.registerCallDecision(
+         └─ VeriCallRegistryV2.registerCallDecision(
               callId,        // keccak256(callSid + timestamp)
-              callerHash,    // keccak256(phoneNumber) — プライバシー保護
+              callerHash,    // keccak256(phoneNumber) — privacy-preserving
               decision,      // 1=ACCEPT, 2=BLOCK, 3=RECORD
-              reason,        // AI の判定理由（200 文字以内）
-              zkProofSeal,   // Groth16 seal
-              journalDataAbi,// ABI エンコードされた public outputs
-              sourceUrl      // 証明対象の URL
+              reason,        // AI's decision reason (≤200 chars)
+              zkProofSeal,   // RISC Zero seal
+              journalDataAbi,// ABI-encoded public outputs
+              sourceUrl      // The URL that was proven
             )
 ```
 
-**ファイル**: [lib/witness/on-chain.ts](lib/witness/on-chain.ts)
-- `viem` で Base Sepolia に TX 送信
-- ウォレット: `DEPLOYER_MNEMONIC` から導出
+**File**: [lib/witness/on-chain.ts](lib/witness/on-chain.ts)
+- Sends TX to Base Sepolia via `viem`
+- Wallet: Derived from `DEPLOYER_MNEMONIC`
 
-**ファイル**: [contracts/VeriCallRegistry.sol](contracts/VeriCallRegistry.sol)
-- `registerCallDecision()`: レコード登録 + `journalHash` コミットメント保存
-- `verifyJournal()`: `keccak256(journalDataAbi) == journalHash` を検証
-- `getRecord()` / `getStats()` / `callIds[]`: 読み取り関数
+**File**: [contracts/VeriCallRegistryV2.sol](contracts/VeriCallRegistryV2.sol)
+- `registerCallDecision()`: Registers record + verifies ZK proof on-chain
+- `verifyJournal()`: Checks `keccak256(journalDataAbi) == journalHash`
+- `getRecord()` / `getProvenData()` / `getStats()` / `callIds[]`: Read functions
 
-### 2.4 証明の検証方法
+> **What this proves**: The smart contract calls `verifier.verify(seal, imageId, sha256(journalDataAbi))`, which verifies the ZK proof on-chain. If verification fails, the transaction reverts and no record is stored. A `verified: true` record on-chain means the ZK proof was cryptographically validated by the blockchain itself — creating an immutable, tamper-proof audit trail that anyone can independently verify.
 
-オンチェーンに記録された証明が正しく動いていることを、以下の手段で確認できる:
+### 2.4 Proof Verification Methods
 
-#### CLI インスペクター
+The proofs recorded on-chain can be verified through the following means:
+
+#### CLI Inspector
 
 ```bash
-npx tsx scripts/check-registry.ts        # 人間向け表示
-npx tsx scripts/check-registry.ts --json  # JSON 出力
+npx tsx scripts/check-registry.ts        # Human-readable output
+npx tsx scripts/check-registry.ts --json  # JSON output
 ```
 
-**ファイル**: [scripts/check-registry.ts](scripts/check-registry.ts)
-- オンチェーンの全レコードを読み取り・デコード
-- ZK Journal のバイナリデータからメソッド・URL・抽出値をデコード
-- `verifyJournal()` でジャーナルハッシュの整合性を検証
+**File**: [scripts/check-registry.ts](scripts/check-registry.ts)
+- Reads all on-chain records and decodes them
+- Decodes ZK Journal binary data to extract method, URL, and extracted values
+- Verifies journal hash integrity via `verifyJournal()`
 
-表示内容:
+Output example:
 ```
 ━━━ Record #2 ━━━━━━━━━━━━━━━━━━━━
   Call ID:     0x8a3f2b...
@@ -324,71 +343,77 @@ npx tsx scripts/check-registry.ts --json  # JSON 出力
 GET /api/explorer
 ```
 
-**ファイル**: [app/api/explorer/route.ts](app/api/explorer/route.ts)
-- ブラウザからオンチェーンデータを JSON で閲覧可能
-- 将来の Web ダッシュボード用 API
+**File**: [app/api/explorer/route.ts](app/api/explorer/route.ts)
+- Browse on-chain data as JSON from a browser
+- API for the future web dashboard
 
 #### BaseScan
 
 ```
-https://sepolia.basescan.org/address/0xe454ca755219310b2728d39db8039cbaa7abc3b8
+https://sepolia.basescan.org/address/{contract}
 ```
 
-コントラクトの Read Contract から直接 `getRecord()`, `getStats()` を呼び出せる。
+Call `getRecord()`, `getStats()`, `getProvenData()` directly from Read Contract on BaseScan.
 
 ---
 
-## 3. インフラ・認証・コンポーネント構成
+## 3. Infrastructure, Authentication, and Component Layout
 
-### 3.1 アプリケーションコンポーネント
+### 3.1 Application Components
 
 ```
 veriCall/
-├── server.ts                           # カスタムサーバー (Next.js + WebSocket)
+├── server.ts                           # Custom server (Next.js + WebSocket)
 ├── app/
 │   ├── phone/
-│   │   ├── incoming/route.ts           # Twilio Webhook (着信)
+│   │   ├── incoming/route.ts           # Twilio Webhook (incoming call)
 │   │   ├── status/route.ts             # Twilio Status Callback
-│   │   ├── logs/route.ts               # 通話ログ API
+│   │   ├── logs/route.ts               # Call log API
 │   │   └── _lib/
-│   │       ├── router.ts               # ルーティングロジック (ホワイトリスト/AI)
-│   │       ├── twiml-builder.ts        # TwiML XML 生成
-│   │       ├── twilio.ts               # Twilio SDK ラッパー
-│   │       └── email.ts                # メール通知
+│   │       ├── router.ts               # Routing logic (whitelist/AI)
+│   │       ├── twiml-builder.ts        # TwiML XML generation
+│   │       ├── twilio.ts               # Twilio SDK wrapper
+│   │       └── email.ts                # Email notification
 │   ├── api/
-│   │   ├── health/route.ts             # ヘルスチェック
-│   │   ├── explorer/route.ts           # オンチェーンデータ Explorer API
+│   │   ├── health/route.ts             # Health check
+│   │   ├── explorer/route.ts           # On-chain data Explorer API
 │   │   └── witness/
-│   │       └── decision/[callSid]/     # 判定 API (vlayer Web Proof 対象)
+│   │       └── decision/[callSid]/     # Decision API (target of vlayer Web Proof)
 │   │           └── route.ts
-│   └── witness/                        # Witness 関連ページ (将来)
+│   └── witness/                        # Witness-related pages (future)
 │       ├── list/
 │       └── verify/
 ├── lib/
-│   ├── config.ts                       # 共通設定
-│   ├── db.ts                           # Cloud SQL クライアント (IAM 認証)
+│   ├── config.ts                       # Shared configuration
+│   ├── db.ts                           # Cloud SQL client (IAM auth)
 │   ├── voice-ai/
-│   │   ├── session.ts                  # 通話セッション管理 (★ 中核)
-│   │   ├── gemini.ts                   # Gemini AI (スクリーニング判定)
+│   │   ├── session.ts                  # Call session management (★ core)
+│   │   ├── gemini.ts                   # Gemini AI (screening decisions)
 │   │   ├── speech-to-text.ts           # Google Cloud STT
 │   │   ├── text-to-speech.ts           # Google Cloud TTS
-│   │   ├── audio-utils.ts             # μ-law ↔ Linear16 変換
-│   │   └── email-notify.ts            # SendGrid メール通知
+│   │   ├── audio-utils.ts             # μ-law ↔ Linear16 conversion
+│   │   └── email-notify.ts            # SendGrid email notification
 │   └── witness/
-│       ├── pipeline.ts                 # Witness パイプライン (★ 証明生成)
-│       ├── vlayer-api.ts               # vlayer REST API クライアント
-│       ├── on-chain.ts                 # Base Sepolia TX 送信
-│       ├── decision-store.ts           # Cloud SQL 判定データストア
-│       └── abi.ts                      # VeriCallRegistry ABI
+│       ├── pipeline.ts                 # Witness pipeline (★ proof generation)
+│       ├── vlayer-api.ts               # vlayer REST API client
+│       ├── on-chain.ts                 # Base Sepolia TX submission
+│       ├── decision-store.ts           # Cloud SQL decision data store
+│       └── abi.ts                      # VeriCallRegistryV2 ABI
 ├── contracts/
-│   └── VeriCallRegistry.sol            # Solidity コントラクト
+│   ├── VeriCallRegistry.sol            # V1 Solidity contract
+│   ├── VeriCallRegistryV2.sol          # V2 Solidity contract (with ZK verification)
+│   ├── RiscZeroMockVerifier.sol        # Mock Verifier for development
+│   ├── interfaces/
+│   │   └── IRiscZeroVerifier.sol       # RISC Zero standard interface
+│   └── deployment.json                 # Deployment info (Single Source of Truth)
 ├── scripts/
-│   └── check-registry.ts              # CLI レジストリインスペクター
+│   ├── check-registry.ts              # CLI registry inspector (V1/V2)
+│   └── deploy-v2.ts                   # V2 deployment script (with auto-sync)
 └── .github/workflows/
     └── deploy.yml                      # GitHub Actions CI/CD
 ```
 
-### 3.2 インフラ構成
+### 3.2 Infrastructure Layout
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -401,8 +426,8 @@ veriCall/
 │  │                       │   │                           │ │
 │  │  - Next.js + WS       │   │  - PostgreSQL 15          │ │
 │  │  - 512Mi / 1 CPU      │   │  - db-f1-micro           │ │
-│  │  - min=1, max=10      │   │  - IAM 認証              │ │
-│  │  - session-affinity   │   │  - SSL 必須              │ │
+│  │  - min=1, max=10      │   │  - IAM auth              │ │
+│  │  - session-affinity   │   │  - SSL required           │ │
 │  │  - timeout=600s       │   │  - Public IP + Connector │ │
 │  └──────────┬───────────┘   └─────────────────────────┘ │
 │             │                                            │
@@ -416,58 +441,58 @@ veriCall/
 │  Twilio           │  │  vlayer          │  │  Base Sepolia │
 │  (PSTN Gateway)   │  │  (ZK SaaS)      │  │  (L2 Chain)   │
 │                    │  │                  │  │               │
-│  - Phone number   │  │  - Web Prover   │  │  - Contract   │
-│  - Media Stream   │  │  - ZK Prover    │  │    0xe454...  │
-│  - WebSocket      │  │  - TLSNotary    │  │  - Groth16    │
+│  - Phone number   │  │  - Web Prover   │  │  - V2 Contract│
+│  - Media Stream   │  │  - ZK Prover    │  │  - MockVerifier│
+│  - WebSocket      │  │  - TLSNotary    │  │               │
 └──────────────────┘  └──────────────────┘  └──────────────┘
 ```
 
-### 3.3 認証・セキュリティ構成
+### 3.3 Authentication & Security
 
-#### サービスアカウント
+#### Service Account
 
 ```
 vericall-deploy@ethglobal-479011.iam.gserviceaccount.com
   │
-  ├─ roles/editor                     # GCP 全般
-  ├─ roles/cloudsql.client            # Cloud SQL 接続
-  ├─ roles/cloudsql.instanceUser      # IAM DB 認証
-  ├─ roles/secretmanager.admin        # Secret Manager 管理
-  ├─ roles/secretmanager.secretAccessor # Secret 読み取り
+  ├─ roles/editor                     # GCP general
+  ├─ roles/cloudsql.client            # Cloud SQL connection
+  ├─ roles/cloudsql.instanceUser      # IAM DB auth
+  ├─ roles/secretmanager.admin        # Secret Manager management
+  ├─ roles/secretmanager.secretAccessor # Secret read access
   ├─ roles/artifactregistry.writer    # Docker push
-  ├─ roles/run.admin                  # Cloud Run デプロイ
-  └─ roles/iam.serviceAccountUser     # SA 権限借用
+  ├─ roles/run.admin                  # Cloud Run deployment
+  └─ roles/iam.serviceAccountUser     # SA impersonation
 ```
 
-#### 認証フロー
+#### Authentication Flows
 
-| 接続 | 認証方式 | 詳細 |
-|------|---------|------|
-| GitHub Actions → GCP | Workload Identity Federation | OIDC トークン交換、パスワードなし |
-| Cloud Run → Cloud SQL | IAM DB 認証 | `@google-cloud/cloud-sql-connector` + ADC |
-| Cloud Run → Secret Manager | IAM (自動) | SA に `secretAccessor` ロール |
-| Cloud Run → Gemini/STT/TTS | ADC (自動) | SA の GCP 認証情報 |
+| Connection | Auth Method | Details |
+|------------|-------------|---------|
+| GitHub Actions → GCP | Workload Identity Federation | OIDC token exchange, passwordless |
+| Cloud Run → Cloud SQL | IAM DB auth | `@google-cloud/cloud-sql-connector` + ADC |
+| Cloud Run → Secret Manager | IAM (automatic) | `secretAccessor` role on SA |
+| Cloud Run → Gemini/STT/TTS | ADC (automatic) | SA's GCP credentials |
 | Pipeline → vlayer | API Key + Client ID | `VLAYER_API_KEY`, `VLAYER_CLIENT_ID` |
-| Pipeline → Base Sepolia | Mnemonic → 秘密鍵 | `DEPLOYER_MNEMONIC` から導出 |
-| Twilio → VeriCall | URL ベース | Twilio Webhook URL |
+| Pipeline → Base Sepolia | Mnemonic → private key | Derived from `DEPLOYER_MNEMONIC` |
+| Twilio → VeriCall | URL-based | Twilio Webhook URL |
 
-#### Cloud SQL セキュリティ
+#### Cloud SQL Security
 
 ```
 Cloud SQL (vericall-db)
   │
-  ├─ IAM 認証 ON (cloudsql.iam_authentication=on)
-  │   └─ IAM DB ユーザー: vericall-deploy@ethglobal-479011.iam
-  │       └─ パスワード不要 — ADC トークンで認証
+  ├─ IAM auth ON (cloudsql.iam_authentication=on)
+  │   └─ IAM DB user: vericall-deploy@ethglobal-479011.iam
+  │       └─ No password — authenticates via ADC token
   │
-  ├─ SSL 必須 (--require-ssl)
-  │   └─ 非 SSL 接続は全拒否
+  ├─ SSL required (--require-ssl)
+  │   └─ All non-SSL connections rejected
   │
-  └─ postgres 管理者パスワード
-      └─ ランダム値、Secret Manager に保存 (CLOUDSQL_POSTGRES_ADMIN_PASSWORD)
+  └─ postgres admin password
+      └─ Random value, stored in Secret Manager (CLOUDSQL_POSTGRES_ADMIN_PASSWORD)
 ```
 
-### 3.4 CI/CD パイプライン
+### 3.4 CI/CD Pipeline
 
 ```
 git push origin master
@@ -476,18 +501,18 @@ git push origin master
          │
          ├─ 1. Checkout
          ├─ 2. GCP Auth (Workload Identity Federation)
-         ├─ 3. Sync Secrets → Secret Manager
+         ├─ 3. Sync Contract Address from deployment.json
          ├─ 4. Docker Build (Buildx, layer cache)
          ├─ 5. Push to Artifact Registry
          └─ 6. gcloud run deploy
               │
               ├─ --service-account vericall-deploy@...
               ├─ --add-cloudsql-instances ethglobal-479011:us-central1:vericall-db
-              ├─ --set-env-vars NODE_ENV, DB 設定, BASE_URL
-              └─ --set-secrets 15 個のシークレット
+              ├─ --set-env-vars NODE_ENV, DB config, BASE_URL
+              └─ --set-secrets 15 secrets
 ```
 
-### 3.5 データフロー全体図
+### 3.5 Overall Data Flow
 
 ```
             ①                ②               ③              ④
@@ -505,78 +530,81 @@ git push origin master
   (CLI / Explorer / BaseScan)
 ```
 
-| Step | 処理 | 所要時間 (目安) |
-|------|------|----------------|
-| ① | 電話着信 → WebSocket 接続 | ~1s |
-| ② | AI スクリーニング会話 | 15-60s |
-| ③ | 判定 → Cloud SQL 保存 | ~100ms |
-| ④ | Decision API 応答 | ~50ms |
-| ⑤ | vlayer Web Proof (TLSNotary) | 10-30s |
-| ⑥ | vlayer ZK Proof (RISC Zero→Groth16) | 30-120s |
-| ⑦ | Base Sepolia TX 送信 + 確認 | 2-5s |
-| ⑧ | オンチェーン記録完了 | - |
-| ⑨ | CLI / Explorer で検証 | ~2s |
+| Step | Processing | Estimated Time |
+|------|-----------|----------------|
+| ① | Incoming call → WebSocket connection | ~1s |
+| ② | AI screening conversation | 15–60s |
+| ③ | Decision → Cloud SQL persistence | ~100ms |
+| ④ | Decision API response | ~50ms |
+| ⑤ | vlayer Web Proof (TLSNotary) | 10–30s |
+| ⑥ | vlayer ZK Proof (RISC Zero → Groth16) | 30–120s |
+| ⑦ | Base Sepolia TX submission + confirmation | 2–5s |
+| ⑧ | On-chain recording complete | — |
+| ⑨ | CLI / Explorer verification | ~2s |
 
-**合計**: 通話終了から ⑧ 完了まで約 1-3 分（⑤-⑦ はバックグラウンド実行、通話をブロックしない）
+**Total**: From call end to ⑧ completion, approximately 1–3 minutes (⑤–⑦ run in the background, not blocking the call).
 
-### 3.6 外部サービス依存
+### 3.6 External Service Dependencies
 
-| サービス | 用途 | 認証方式 |
-|---------|------|---------|
-| Twilio | 電話 PSTN ゲートウェイ + Media Stream | Account SID + Auth Token |
-| Google Gemini | AI 会話 + スクリーニング判定 | ADC (Google Cloud) |
-| Google Cloud STT | リアルタイム音声認識 | ADC |
-| Google Cloud TTS | 音声合成 (μ-law 8kHz) | ADC |
-| vlayer Web Prover | TLSNotary ベースの Web Proof 生成 | API Key + Client ID |
-| vlayer ZK Prover | RISC Zero → Groth16 BN254 圧縮 | API Key + Client ID |
-| SendGrid | メール通知 | API Key |
-| Base Sepolia RPC | EVM トランザクション送信 | Public RPC |
+| Service | Purpose | Auth Method |
+|---------|---------|-------------|
+| Twilio | Phone PSTN gateway + Media Stream | Account SID + Auth Token |
+| Google Gemini | AI conversation + screening decisions | ADC (Google Cloud) |
+| Google Cloud STT | Real-time speech recognition | ADC |
+| Google Cloud TTS | Speech synthesis (μ-law 8kHz) | ADC |
+| vlayer Web Prover | TLSNotary-based Web Proof generation | API Key + Client ID |
+| vlayer ZK Prover | RISC Zero → Groth16 BN254 compression | API Key + Client ID |
+| SendGrid | Email notifications | API Key |
+| Base Sepolia RPC | EVM transaction submission | Public RPC |
 
-### 3.7 コントラクト設計
+### 3.7 Contract Design
 
-**VeriCallRegistry** (`0xe454ca755219310b2728d39db8039cbaa7abc3b8`)
+**VeriCallRegistryV2** (deployed on Base Sepolia)
 
 ```solidity
 struct CallRecord {
-    bytes32 callerHash;      // keccak256(phoneNumber)
-    Decision decision;       // ACCEPT / BLOCK / RECORD
-    string reason;           // AI の判定理由
-    bytes32 journalHash;     // keccak256(journalDataAbi) — コミットメント
-    bytes zkProofSeal;       // Groth16 seal
-    bytes journalDataAbi;    // ABI エンコードされた public outputs
-    string sourceUrl;        // 証明対象 URL
-    uint256 timestamp;       // 登録時刻
-    address submitter;       // 送信者アドレス
+    bytes32 callerHash;        // keccak256(phoneNumber) — privacy-preserving
+    Decision decision;         // ACCEPT(1) / BLOCK(2) / RECORD(3)
+    string reason;             // AI's decision reason (≤200 chars)
+    bytes32 journalHash;       // keccak256(journalDataAbi) — commitment
+    bytes zkProofSeal;         // RISC Zero seal (Mock: 36B / Prod: ~256B)
+    bytes journalDataAbi;      // ABI-encoded public outputs (all 6 fields)
+    string sourceUrl;          // URL that was proven
+    uint256 timestamp;         // block.timestamp
+    address submitter;         // TX sender
+    bool verified;             // ZK verification passed flag
 }
 ```
 
-**検証可能性**:
-- `journalHash == keccak256(journalDataAbi)` → ジャーナル整合性
-- `journalDataAbi` をデコードすると `decision`, `reason` の値が得られる
-- `sourceUrl` がどの API エンドポイントを証明したかを示す
-- `zkProofSeal` が Groth16 proof（将来オンチェーン検証に使用）
+**Verifiability**:
+- `verifier.verify(seal, imageId, sha256(journalDataAbi))` → on-chain ZK proof verification
+- `journalHash == keccak256(journalDataAbi)` → journal integrity
+- Decoding `journalDataAbi` yields `decision`, `reason` values
+- `sourceUrl` indicates which API endpoint was proven
+- `verified == true` means the ZK proof passed on-chain verification
 
-**Phase 計画**:
-- Phase 1 (完了): 証明データのオンチェーン保存（Proof of Existence） — VeriCallRegistry V1
-- **Phase 2 (現在): MockVerifier + on-chain ZK 検証** — VeriCallRegistryV2
-- Phase 3 (将来): vlayer 本番 → RiscZeroVerifierRouter に切り替え
-- Phase 4 (将来): Sui クロスチェーン検証
+**Phase Plan**:
+- Phase 1 (complete): On-chain storage of proof data (Proof of Existence) — VeriCallRegistry V1
+- **Phase 2 (current): MockVerifier + on-chain ZK verification** — VeriCallRegistryV2
+- Phase 3 (future): vlayer production → switch to RiscZeroVerifierRouter
+- Phase 4 (future): Cross-chain verification on Sui
 
 ---
 
-## 4. ZK Proof Verification Architecture（目標アーキテクチャ）
+## 4. ZK Proof Verification Architecture
 
-> この章は、vlayer ZK 証明の実態調査と ETHGlobal 受賞プロジェクト (LensMint Camera) の
-> 分析を経て設計された **VeriCall の目標 ZK 検証アーキテクチャ** を記述する。
+> This chapter describes VeriCall's ZK verification architecture, designed through
+> investigation of vlayer's ZK proof behavior and the MockVerifier pattern used by
+> RISC Zero-based dApps in development mode.
 
-### 4.1 vlayer ZK 証明の実態（調査結果）
+### 4.1 vlayer ZK Proof Investigation Results
 
-vlayer の ZK Prover API (`/api/v0/compress-web-proof`) は現在 **"Under Development"** ステータスで稼働している。
-返却される証明データの実態は以下の通り:
+vlayer's ZK Prover API (`/api/v0/compress-web-proof`) currently operates in an **"Under Development"** status.
+The actual proof data returned has the following structure:
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  vlayer /compress-web-proof レスポンス                         │
+│  vlayer /compress-web-proof response                          │
 │                                                               │
 │  {                                                            │
 │    "success": true,                                           │
@@ -588,98 +616,98 @@ vlayer の ZK Prover API (`/api/v0/compress-web-proof`) は現在 **"Under Devel
 └──────────────────────────────────────────────────────────────┘
 ```
 
-#### zkProof (Seal) の構造: 36 bytes
+#### zkProof (Seal) Structure: 36 bytes
 
 ```
 Offset  Size    Field              Value
 ──────  ──────  ─────────────────  ──────────────────────────────
 0x00    4 byte  selector           0xFFFFFFFF (RISC Zero SELECTOR_FAKE)
-0x04    32 byte imageId            可変 (RISC Zero guest program ID)
+0x04    32 byte imageId            Variable (RISC Zero guest program ID)
 
-合計: 36 bytes
+Total: 36 bytes
 ```
 
-**重要な発見**:
-- `0xFFFFFFFF` は RISC Zero の `SELECTOR_FAKE` — **Mock Proof** を示すセレクタ
-- 本番の Groth16 BN254 proof は ~256 bytes になるはず（現在は 36 bytes）
-- seal 内の imageId は毎回異なり、vlayer `/guest-id` API が返す guestId とも一致しない
-- **RISC Zero RiscZeroVerifierRouter (`0x0b144e...`) に verify() を呼ぶと REVERT する**
+**Key Findings**:
+- `0xFFFFFFFF` is RISC Zero's `SELECTOR_FAKE` — a selector indicating **Mock Proof**
+- Production Groth16 BN254 proofs should be ~256 bytes (currently only 36 bytes)
+- The imageId within the seal varies per proof and does not match the guestId from vlayer's `/guest-id` API
+- **Calling `verify()` on the RISC Zero RiscZeroVerifierRouter (`0x0b144e...`) on Base Sepolia REVERTS**
 
 ```
-実験: Base Sepolia 上で実行
+Experiment: Executed on Base Sepolia
   contract: RiscZeroVerifierRouter (0x0b144e07a0826182b6b59788c34b32bfa86fb711)
   call:     verify(seal, guestId, sha256(journal))
   result:   ❌ REVERTED (error signature: 0xe4ea6542)
 ```
 
-#### LensMint Camera の解法（ETHGlobal Buenos Aires 2025 — vlayer Best ZK Proving dApp 受賞）
+#### The MockVerifier Pattern
 
-LensMint Camera (https://github.com/mbcse/lensmint-camera) は **同じ問題** に対して以下の解法を採用:
+The standard approach for RISC Zero-based dApps during development is to deploy a **RiscZeroMockVerifier** that accepts any seal prefixed with `0xFFFFFFFF`:
 
 ```
-1. RiscZeroMockVerifier(0xFFFFFFFF) を自前デプロイ
-   └─ seal[0:4] == 0xFFFFFFFF ならパス（Mock 受理）
+1. Deploy RiscZeroMockVerifier(0xFFFFFFFF)
+   └─ If seal[0:4] == 0xFFFFFFFF → pass (accept Mock proofs)
 
-2. LensMintVerifier.sol で verify() を呼び出し
+2. Application contract calls verify()
    └─ verifier.verify(seal, IMAGE_ID, sha256(journalData))
 
-3. journalData を abi.decode して中身を検証
+3. Decode and validate journalData via abi.decode
    └─ notaryKeyFingerprint, method, url, timestamp, queriesHash, extractedData
 
-4. Production 切り替えパス
-   └─ 環境変数 RISC_ZERO_VERIFIER_ADDRESS が設定されていれば本番 Verifier を使用
+4. Production migration path
+   └─ Switch verifier address to the production RiscZeroVerifierRouter at deploy time
 ```
 
-**結論**: vlayer の Mock Proof はバグではなく開発モードの仕様。
-ETHGlobal 受賞プロジェクトも同パターン。VeriCall も同じアプローチを採用する。
+**Conclusion**: vlayer's Mock Proof is not a bug — it is the expected behavior in development mode.
+VeriCall adopts the same MockVerifier pattern, with a clear upgrade path to production Groth16 verification.
 
-### 4.2 Journal Data Format 仕様（バイトレベル）
+### 4.2 Journal Data Format Specification (Byte-Level)
 
-vlayer `/compress-web-proof` が返す `journalDataAbi` は以下の Solidity ABI エンコーディング:
+The `journalDataAbi` returned by vlayer's `/compress-web-proof` is the following Solidity ABI encoding:
 
 ```solidity
 abi.encode(
-    bytes32 notaryKeyFingerprint,  // Slot 0: TLSNotary 公開鍵フィンガープリント
-    string  method,                // Slot 1+: HTTP メソッド ("GET")
-    string  url,                   // Slot N+: 証明対象 URL (完全 URL)
-    uint256 timestamp,             // Slot M:  証明生成時刻 (Unix epoch seconds)
-    bytes32 queriesHash,           // Slot M+1: URL クエリパラメータの keccak256
-    string  extractedData          // Slot P+: JMESPath 抽出結果 (JSON 文字列)
+    bytes32 notaryKeyFingerprint,  // Slot 0: TLSNotary public key fingerprint
+    string  method,                // Slot 1+: HTTP method ("GET")
+    string  url,                   // Slot N+: Proven URL (full URL)
+    uint256 timestamp,             // Slot M:  Proof generation time (Unix epoch seconds)
+    bytes32 queriesHash,           // Slot M+1: keccak256 of URL query parameters
+    string  extractedData          // Slot P+: JMESPath extraction result (JSON string)
 )
 ```
 
-#### ABI エンコーディング詳細（バイトレイアウト）
+#### ABI Encoding Details (Byte Layout)
 
 ```
 Offset  Description
 ──────  ─────────────────────────────────────────────────────
-0x0000  bytes32 notaryKeyFingerprint (32 bytes, 左詰め)
-0x0020  uint256 offset_method        (→ method 文字列の開始位置)
-0x0040  uint256 offset_url           (→ url 文字列の開始位置)
-0x0060  uint256 timestamp            (32 bytes, 右詰め)
-0x0080  bytes32 queriesHash          (32 bytes, 左詰め)
-0x00A0  uint256 offset_extractedData (→ extractedData 文字列の開始位置)
+0x0000  bytes32 notaryKeyFingerprint (32 bytes, left-padded)
+0x0020  uint256 offset_method        (→ start position of method string)
+0x0040  uint256 offset_url           (→ start position of url string)
+0x0060  uint256 timestamp            (32 bytes, right-padded)
+0x0080  bytes32 queriesHash          (32 bytes, left-padded)
+0x00A0  uint256 offset_extractedData (→ start position of extractedData string)
 ...
-        [method 文字列データ: length + UTF-8 bytes + padding]
-        [url 文字列データ: length + UTF-8 bytes + padding]
-        [extractedData 文字列データ: length + UTF-8 bytes + padding]
+        [method string data: length + UTF-8 bytes + padding]
+        [url string data: length + UTF-8 bytes + padding]
+        [extractedData string data: length + UTF-8 bytes + padding]
 ```
 
-#### VeriCall 具体例
+#### VeriCall Concrete Example
 
 ```
-notaryKeyFingerprint: 0xa1b2c3d4...              (TLSNotary notary 公開鍵の SHA-256)
-method:               "GET"                       (Decision API への HTTP メソッド)
+notaryKeyFingerprint: 0xa1b2c3d4...              (SHA-256 of TLSNotary notary public key)
+method:               "GET"                       (HTTP method for the Decision API)
 url:                  "https://vericall-kkz6k4jema-uc.a.run.app/api/witness/decision/CA1234..."
 timestamp:            1738900000                  (2025-02-07T...)
-queriesHash:          0x0000...0000               (クエリパラメータなし = zero)
+queriesHash:          0x0000...0000               (no query parameters = zero)
 extractedData:        '["BLOCK","Caller was selling SEO services and cold-calling from a list"]'
 ```
 
-**extractedData** は JMESPath `["decision", "reason"]` で抽出された値の JSON 配列。
-Solidity 側ではこの文字列をそのまま保存し、オフチェーンで JSON パースして利用する。
+**extractedData** is a JSON array of values extracted by JMESPath `["decision", "reason"]`.
+The Solidity side stores this string as-is; off-chain consumers JSON-parse it.
 
-#### Solidity デコード
+#### Solidity Decoding
 
 ```solidity
 (
@@ -694,15 +722,15 @@ Solidity 側ではこの文字列をそのまま保存し、オフチェーン�
 
 ### 4.3 IRiscZeroVerifier Interface
 
-RISC Zero の標準検証インターフェース。全ての Verifier（Mock / Groth16 / STARK）がこれを実装する。
+The standard RISC Zero verification interface. All Verifiers (Mock / Groth16 / STARK) implement this.
 
 ```solidity
 // SPDX-License-Identifier: Apache-2.0
 interface IRiscZeroVerifier {
-    /// @notice ZK 証明を検証する。失敗時は revert する。
-    /// @param seal       証明データ (Mock: 36 bytes / Groth16: ~256 bytes)
-    /// @param imageId    RISC Zero guest program ID (vlayer の guestId)
-    /// @param journalDigest  sha256(journalDataAbi) — journal のダイジェスト
+    /// @notice Verify a ZK proof. Reverts on failure.
+    /// @param seal       Proof data (Mock: 36 bytes / Groth16: ~256 bytes)
+    /// @param imageId    RISC Zero guest program ID (vlayer's guestId)
+    /// @param journalDigest  sha256(journalDataAbi) — the journal digest
     function verify(
         bytes calldata seal,
         bytes32 imageId,
@@ -711,8 +739,8 @@ interface IRiscZeroVerifier {
 }
 ```
 
-**重要**: `journalDigest` は `sha256` であって `keccak256` ではない。
-RISC Zero は内部で SHA-256 を使用するため、Solidity 側も `sha256()` を使う必要がある。
+**Important**: `journalDigest` uses `sha256`, not `keccak256`.
+RISC Zero uses SHA-256 internally, so the Solidity side must also use `sha256()`.
 
 ### 4.4 Mock vs Production Verifier
 
@@ -725,46 +753,46 @@ RISC Zero は内部で SHA-256 を使用するため、Solidity 側も `sha256()
 │  │  RiscZeroMockVerifier    │    │  RiscZeroVerifierRouter       │  │
 │  │  (Development)           │    │  (Production)                 │  │
 │  │                          │    │                               │  │
-│  │  検証ロジック:            │    │  検証ロジック:                │  │
-│  │  seal[0:4] == 0xFFFFFFFF │    │  Groth16 BN254 完全検証      │  │
-│  │  → true (常にパス)       │    │  → 暗号学的に安全             │  │
+│  │  Verification logic:     │    │  Verification logic:          │  │
+│  │  seal[0:4] == 0xFFFFFFFF │    │  Full Groth16 BN254 check    │  │
+│  │  → true (always passes)  │    │  → Cryptographically secure   │  │
 │  │                          │    │                               │  │
-│  │  デプロイ: 自前           │    │  デプロイ済み (RISC Zero):    │  │
-│  │  セレクタ: 0xFFFFFFFF    │    │  0x0b144e07a0826182b6b59788  │  │
+│  │  Deployment: Self-deploy │    │  Pre-deployed (RISC Zero):    │  │
+│  │  Selector: 0xFFFFFFFF    │    │  0x0b144e07a0826182b6b59788  │  │
 │  │                          │    │  c34b32bfa86fb711             │  │
 │  └──────────────────────────┘    └──────────────────────────────┘  │
 │                                                                     │
-│  VeriCallRegistryV2 のコンストラクタで注入:                          │
+│  Injected via VeriCallRegistryV2 constructor:                       │
 │  constructor(IRiscZeroVerifier _verifier, bytes32 _imageId)         │
 │                                                                     │
-│  切り替え: デプロイ時に verifier アドレスを変更するだけ              │
-│            コントラクトコードの変更は不要                             │
+│  Switching: Change verifier address at deploy time only             │
+│             No contract code changes required                       │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
 | | RiscZeroMockVerifier | RiscZeroVerifierRouter |
 |---|---|---|
-| Base Sepolia アドレス | 自前デプロイ | `0x0b144e07a0826182b6b59788c34b32bfa86fb711` |
-| 検証内容 | `seal[0:4] == 0xFFFFFFFF` | Groth16 BN254 暗号検証 |
-| 安全性 | テスト用（誰でも偽造可能） | 暗号学的に安全 |
-| vlayer 対応 | 現在の開発モード seal を受理 | 将来の本番 seal を受理 |
-| Gas コスト | ~3,000 gas | ~300,000 gas (pairing 演算) |
-| 使用場面 | 開発・ハッカソン | プロダクション |
+| Base Sepolia Address | Self-deployed | `0x0b144e07a0826182b6b59788c34b32bfa86fb711` |
+| Verification | `seal[0:4] == 0xFFFFFFFF` | Groth16 BN254 cryptographic verification |
+| Security | Test-only (anyone can forge) | Cryptographically secure |
+| vlayer Compatibility | Accepts current dev-mode seals | Will accept future production seals |
+| Gas Cost | ~3,000 gas | ~300,000 gas (pairing operations) |
+| Use Case | Development / hackathon | Production |
 
-### 4.5 VeriCallRegistryV2 アーキテクチャ
+### 4.5 VeriCallRegistryV2 Architecture
 
-V1 からの変更点:
-1. **`IRiscZeroVerifier.verify()` 呼び出し** — ZK 証明をオンチェーンで検証
-2. **`abi.decode(journalDataAbi)`** — Journal を Solidity でデコード
-3. **フィールド検証** — TLSNotary/HTTP メタデータの整合性チェック
-4. **`getProvenData()` ビュー関数** — デコード済みデータの読み取り
-5. **`verified` フラグ** — 検証パス済みを明示
+Changes from V1:
+1. **`IRiscZeroVerifier.verify()` call** — On-chain ZK proof verification
+2. **`abi.decode(journalDataAbi)`** — Journal decoding in Solidity
+3. **Field validation** — TLSNotary/HTTP metadata consistency checks
+4. **`getProvenData()` view function** — Read decoded data
+5. **`verified` flag** — Explicit proof-verified indicator
 
 ```
 VeriCallRegistryV2
 │
 ├── State (immutable)
-│   ├── verifier: IRiscZeroVerifier     ← コンストラクタで注入
+│   ├── verifier: IRiscZeroVerifier     ← Injected via constructor
 │   └── imageId: bytes32                ← vlayer guestId
 │
 ├── State (mutable)
@@ -775,22 +803,22 @@ VeriCallRegistryV2
 │
 ├── registerCallDecision(callId, callerHash, decision, reason, seal, journal, url)
 │   │
-│   ├── Step 1: ZK Proof 検証
+│   ├── Step 1: ZK Proof Verification
 │   │   └── verifier.verify(seal, imageId, sha256(journalDataAbi))
 │   │       └── Mock: seal[0:4] == 0xFFFFFFFF → pass
 │   │       └── Prod: Groth16 BN254 pairing check → pass or revert
 │   │
-│   ├── Step 2: Journal デコード & バリデーション
+│   ├── Step 2: Journal Decode & Validation
 │   │   └── abi.decode(journalDataAbi) → 6 fields:
-│   │       ├── notaryKeyFingerprint ≠ bytes32(0)   ← TLSNotary 鍵が存在
-│   │       ├── method == "GET"                      ← HTTP メソッド正当性
-│   │       ├── bytes(url).length > 0                ← URL が存在
-│   │       └── bytes(extractedData).length > 0      ← 抽出データが存在
+│   │       ├── notaryKeyFingerprint ≠ bytes32(0)   ← TLSNotary key exists
+│   │       ├── method == "GET"                      ← Valid HTTP method
+│   │       ├── bytes(url).length > 0                ← URL exists
+│   │       └── bytes(extractedData).length > 0      ← Extracted data exists
 │   │
-│   ├── Step 3: CallRecord 保存
-│   │   └── journalHash = keccak256(journalDataAbi) をコミットメントとして保存
+│   ├── Step 3: CallRecord Storage
+│   │   └── journalHash = keccak256(journalDataAbi) stored as commitment
 │   │
-│   └── Step 4: イベント発行
+│   └── Step 4: Event Emission
 │       ├── ProofVerified(callId, imageId, journalDigest)
 │       └── CallDecisionRecorded(callId, callerHash, decision, timestamp, submitter)
 │
@@ -804,28 +832,28 @@ VeriCallRegistryV2
     └── transferOwnership(address) [onlyOwner]
 ```
 
-#### CallRecord 構造体 (V2)
+#### CallRecord Struct (V2)
 
 ```solidity
 struct CallRecord {
-    bytes32 callerHash;        // keccak256(phoneNumber) — プライバシー保護
+    bytes32 callerHash;        // keccak256(phoneNumber) — privacy-preserving
     Decision decision;         // ACCEPT(1) / BLOCK(2) / RECORD(3)
-    string reason;             // AI の判定理由（200 文字以内）
-    bytes32 journalHash;       // keccak256(journalDataAbi) — コミットメント
+    string reason;             // AI's decision reason (≤200 chars)
+    bytes32 journalHash;       // keccak256(journalDataAbi) — commitment
     bytes zkProofSeal;         // RISC Zero seal (Mock: 36B / Prod: ~256B)
-    bytes journalDataAbi;      // ABI エンコード済み public outputs (全6フィールド)
-    string sourceUrl;          // 証明対象 URL
+    bytes journalDataAbi;      // ABI-encoded public outputs (all 6 fields)
+    string sourceUrl;          // URL that was proven
     uint256 timestamp;         // block.timestamp
-    address submitter;         // TX 送信者
-    bool verified;             // ZK 検証パス済みフラグ (常に true — revert しなければ到達しない)
+    address submitter;         // TX sender
+    bool verified;             // ZK verification passed flag (always true — unreachable if reverted)
 }
 ```
 
-### 4.6 End-to-End 処理フロー（バイトレベル詳細）
+### 4.6 End-to-End Processing Flow (Byte-Level Detail)
 
 ```
 ═══════════════════════════════════════════════════════════════════════
- Step 1: 電話着信 → AI スクリーニング → 判定
+ Step 1: Incoming Call → AI Screening → Decision
 ═══════════════════════════════════════════════════════════════════════
 
   Caller ──PSTN──→ Twilio ──POST──→ /phone/incoming
@@ -841,7 +869,7 @@ struct CallRecord {
                                                               Reason: "Caller was selling..."
 
 ═══════════════════════════════════════════════════════════════════════
- Step 2: 判定データ保存 (Cloud SQL)
+ Step 2: Decision Data Persistence (Cloud SQL)
 ═══════════════════════════════════════════════════════════════════════
 
   handleDecision()
@@ -872,16 +900,16 @@ struct CallRecord {
         "headers": []
       }
 
-  vlayer 内部処理:
-    1. VeriCall サーバーに TLS 接続
-    2. TLSNotary MPC プロトコルで TLS セッションを共同実行
-       ├─ Prover (vlayer) が TLS ハンドシェイクの一部を保持
-       └─ Notary (vlayer notary) が残りを保持 → 共同で復号
-    3. HTTP レスポンスの内容を暗号的に証明
-    4. WebProof オブジェクトを構築
+  vlayer internal processing:
+    1. Establish TLS connection to VeriCall server
+    2. Co-execute TLS session via TLSNotary MPC protocol
+       ├─ Prover (vlayer) holds part of the TLS handshake
+       └─ Notary (vlayer notary) holds the rest → jointly decrypt
+    3. Cryptographically prove the HTTP response content
+    4. Construct WebProof object
        ├─ data: TLSNotary presentation (base64)
-       ├─ version: プロトコルバージョン
-       └─ meta.notaryUrl: Notary サーバー URL
+       ├─ version: Protocol version
+       └─ meta.notaryUrl: Notary server URL
 
   Response:
     {
@@ -890,7 +918,7 @@ struct CallRecord {
       "meta": { "notaryUrl": "https://..." }
     }
 
-  所要時間: 10-30 秒
+  Duration: 10–30 seconds
 
 ═══════════════════════════════════════════════════════════════════════
  Step 4: vlayer ZK Proof (RISC Zero zkVM → Mock Seal)
@@ -914,38 +942,42 @@ struct CallRecord {
         }
       }
 
-  vlayer 内部処理:
-    1. WebProof を RISC Zero zkVM ゲストプログラムに入力
-    2. zkVM 内で TLSNotary 証明を検証
-    3. JMESPath ["decision", "reason"] で HTTP レスポンスボディから値を抽出
-    4. Journal (public outputs) を構築:
-       ├─ notaryKeyFingerprint: TLSNotary 公開鍵の SHA-256
+  vlayer internal processing:
+    1. Feed WebProof into RISC Zero zkVM guest program
+       → Proves: Execution happens in a deterministic, verifiable environment
+    2. Validate TLSNotary proof inside zkVM
+       → Proves: The WebProof is authentic — the Notary genuinely attested
+    3. Extract values via JMESPath ["decision", "reason"] from the HTTP response body
+       → Proves: These specific values were present in the authentic server response
+    4. Construct Journal (public outputs):
+       ├─ notaryKeyFingerprint: SHA-256 of TLSNotary public key
        ├─ method: "GET"
        ├─ url: "https://vericall-.../api/witness/decision/CA1234..."
        ├─ timestamp: 1738900000
        ├─ queriesHash: 0x00...00
        └─ extractedData: '["BLOCK","Caller was selling SEO services..."]'
-    5. Journal を ABI エンコード → journalDataAbi
-    6. Seal (証明) を生成 → 現在は Mock: 0xFFFFFFFF + imageId (36 bytes)
+    5. ABI-encode Journal → journalDataAbi
+    6. Generate Seal (proof) → currently Mock: 0xFFFFFFFF + imageId (36 bytes)
+       → Proves: All verifications above passed within the zkVM
 
   Response:
     {
       "success": true,
       "data": {
         "zkProof": "0xffffffff6e251f4d993427d02a4199e1201f3b54462365d7c672a51be57f776d509b47eb",
-        "journalDataAbi": "0x000000...（ABI エンコード済みデータ）"
+        "journalDataAbi": "0x000000...（ABI-encoded data）"
       }
     }
 
-  所要時間: 30-120 秒
+  Duration: 30–120 seconds
 
 ═══════════════════════════════════════════════════════════════════════
- Step 5: On-chain 登録 + ZK 検証 (VeriCallRegistryV2)
+ Step 5: On-Chain Registration + ZK Verification (VeriCallRegistryV2)
 ═══════════════════════════════════════════════════════════════════════
 
   pipeline.ts: submitDecisionOnChain({...})
 
-  TX 構築 (viem):
+  TX construction (viem):
     to:       VeriCallRegistryV2 (0x...)
     function: registerCallDecision(
       callId:          keccak256("vericall_CA1234..._1738900000"),
@@ -953,39 +985,45 @@ struct CallRecord {
       decision:        2 (BLOCK),
       reason:          "Caller was selling SEO services...",
       zkProofSeal:     0xffffffff6e251f4d...,
-      journalDataAbi:  0x000000... (ABI エンコード),
+      journalDataAbi:  0x000000... (ABI-encoded),
       sourceUrl:       "https://vericall-.../api/witness/decision/CA1234..."
     )
 
-  コントラクト内部処理:
+  Contract internal processing:
 
-    ┌─ Step 5a: ZK Proof 検証 ────────────────────────────────────┐
+    ┌─ Step 5a: ZK Proof Verification ─────────────────────────────┐
     │                                                              │
     │  bytes32 journalDigest = sha256(journalDataAbi);             │
     │  verifier.verify(zkProofSeal, imageId, journalDigest);       │
     │                                                              │
-    │  MockVerifier の場合:                                        │
+    │  MockVerifier:                                               │
     │    require(bytes4(seal[:4]) == 0xFFFFFFFF)  → ✅ PASS        │
     │                                                              │
-    │  ProductionVerifier の場合 (将来):                            │
+    │  ProductionVerifier (future):                                │
     │    Groth16 BN254 pairing check  → ✅ PASS or ❌ REVERT      │
     │                                                              │
     │  emit ProofVerified(callId, imageId, journalDigest)          │
+    │                                                              │
+    │  → Proves: The ZK proof is valid (the seal matches the       │
+    │    expected format and the journal digest is consistent)      │
     └──────────────────────────────────────────────────────────────┘
 
-    ┌─ Step 5b: Journal デコード & バリデーション ─────────────────┐
+    ┌─ Step 5b: Journal Decode & Validation ───────────────────────┐
     │                                                              │
     │  (notaryKeyFP, method, url, ts, queriesHash, extractedData)  │
     │    = abi.decode(journalDataAbi,                              │
     │        (bytes32, string, string, uint256, bytes32, string))   │
     │                                                              │
-    │  require(notaryKeyFP != bytes32(0))      → TLSNotary 鍵存在 │
-    │  require(method == "GET")                → HTTP メソッド正当  │
-    │  require(bytes(url).length > 0)          → URL 存在          │
-    │  require(bytes(extractedData).length > 0) → 抽出データ存在   │
+    │  require(notaryKeyFP != bytes32(0))      → TLSNotary key OK │
+    │  require(method == "GET")                → HTTP method valid  │
+    │  require(bytes(url).length > 0)          → URL exists        │
+    │  require(bytes(extractedData).length > 0) → Extracted data OK│
+    │                                                              │
+    │  → Proves: The journal contains well-formed, non-empty data  │
+    │    that matches expected TLSNotary attestation patterns       │
     └──────────────────────────────────────────────────────────────┘
 
-    ┌─ Step 5c: レコード保存 ─────────────────────────────────────┐
+    ┌─ Step 5c: Record Storage ────────────────────────────────────┐
     │                                                              │
     │  records[callId] = CallRecord({                              │
     │    callerHash:     keccak256("+1234567890"),                  │
@@ -1001,54 +1039,57 @@ struct CallRecord {
     │  })                                                          │
     │                                                              │
     │  emit CallDecisionRecorded(callId, callerHash, BLOCK, ts, …) │
+    │                                                              │
+    │  → Proves: An immutable, timestamped record now exists       │
+    │    on-chain that can never be altered or deleted              │
     └──────────────────────────────────────────────────────────────┘
 
-  結果:
+  Result:
     txHash: 0xabcdef...
     blockNumber: 37329000
     gasUsed: ~150,000 (Mock) / ~450,000 (Production)
 
 ═══════════════════════════════════════════════════════════════════════
- Step 6: 検証（誰でも実行可能）
+ Step 6: Verification (Anyone Can Perform)
 ═══════════════════════════════════════════════════════════════════════
 
-  A) CLI インスペクター (check-registry.ts):
+  A) CLI Inspector (check-registry.ts):
      npx tsx scripts/check-registry.ts
-     → getRecord(callId) でフルデータ取得
-     → verifyJournal(callId, journalDataAbi) で整合性検証
-     → getProvenData(callId) でデコード済みデータ表示
+     → getRecord(callId) to retrieve full data
+     → verifyJournal(callId, journalDataAbi) to verify integrity
+     → getProvenData(callId) to display decoded data
 
   B) Explorer API:
      GET /api/explorer
-     → 全レコードを JSON で返却
+     → Returns all records as JSON
 
   C) BaseScan:
      https://sepolia.basescan.org/address/{contract}
      → Read Contract → getRecord / getProvenData / verifyJournal
 
-  D) 独自検証:
-     1. getRecord(callId) で seal + journalDataAbi を取得
-     2. sha256(journalDataAbi) == 期待される journalDigest を確認
-     3. verifier.verify(seal, imageId, journalDigest) が revert しないことを確認
-     4. abi.decode(journalDataAbi) で extractedData を読み取り
-     5. extractedData の JSON をパースして decision/reason を確認
+  D) Independent Verification:
+     1. getRecord(callId) to retrieve seal + journalDataAbi
+     2. Verify sha256(journalDataAbi) == expected journalDigest
+     3. Confirm verifier.verify(seal, imageId, journalDigest) does not revert
+     4. abi.decode(journalDataAbi) to read extractedData
+     5. JSON-parse extractedData to confirm decision/reason
 ```
 
-### 4.7 デプロイフロー
+### 4.7 Deployment Flow
 
 ```
 scripts/deploy-v2.ts
 
-  ┌─ Step 1: RiscZeroMockVerifier デプロイ ─────────────────────┐
+  ┌─ Step 1: Deploy RiscZeroMockVerifier ───────────────────────┐
   │                                                              │
-  │  bytecode: contracts/out から読み込み                         │
+  │  bytecode: Read from contracts/out                           │
   │  constructor: (bytes4 selector = 0xFFFFFFFF)                 │
   │  → mockVerifierAddress                                       │
   └──────────────────────────────────────────────────────────────┘
           │
-  ┌─ Step 2: VeriCallRegistryV2 デプロイ ───────────────────────┐
+  ┌─ Step 2: Deploy VeriCallRegistryV2 ─────────────────────────┐
   │                                                              │
-  │  bytecode: contracts/out から読み込み                         │
+  │  bytecode: Read from contracts/out                           │
   │  constructor: (                                              │
   │    IRiscZeroVerifier _verifier = mockVerifierAddress,         │
   │    bytes32 _imageId = 0x6e251f4d993427d02a4199e1201f3b5446…  │
@@ -1056,8 +1097,18 @@ scripts/deploy-v2.ts
   │  → registryV2Address                                         │
   └──────────────────────────────────────────────────────────────┘
           │
-  ┌─ Step 3: deployment.json 更新 ──────────────────────────────┐
+  ┌─ Step 3: Verification (5 checks) ──────────────────────────┐
   │                                                              │
+  │  1. getCode(mockVerifier) — bytecode exists                  │
+  │  2. getCode(registry) — bytecode exists                      │
+  │  3. registry.verifier() == mockVerifier address              │
+  │  4. registry.imageId() == expected imageId                   │
+  │  5. registry.owner() == deployer address                     │
+  └──────────────────────────────────────────────────────────────┘
+          │
+  ┌─ Step 4: Auto-sync (Single Source of Truth) ────────────────┐
+  │                                                              │
+  │  4a. Update deployment.json                                  │
   │  {                                                           │
   │    "network": "base-sepolia",                                │
   │    "chainId": 84532,                                         │
@@ -1067,71 +1118,55 @@ scripts/deploy-v2.ts
   │    "version": "v2",                                          │
   │    "v1Address": "0xe454ca755219310b2728d39db8039cbaa7abc3b8"  │
   │  }                                                           │
-  └──────────────────────────────────────────────────────────────┘
-          │
-  ┌─ Step 4: .env.local 更新 ──────────────────────────────────┐
   │                                                              │
+  │  4b. Update .env.local                                       │
   │  VERICALL_CONTRACT_ADDRESS=registryV2Address                 │
+  │                                                              │
+  │  4c. Update GCP Secret Manager                               │
+  │  gcloud secrets versions add VERICALL_CONTRACT_ADDRESS ...   │
   └──────────────────────────────────────────────────────────────┘
 ```
 
-#### Production 切り替え（将来）
+#### Production Migration (Future)
 
-vlayer が本番 Groth16 proof を返すようになった場合:
+When vlayer starts returning production Groth16 proofs:
 
 ```
-1. VeriCallRegistryV2 を再デプロイ
+1. Redeploy VeriCallRegistryV2
    constructor(
      IRiscZeroVerifier(0x0b144e07a0826182b6b59788c34b32bfa86fb711),  // RiscZeroVerifierRouter
      guestId
    )
 
-2. パイプラインは変更不要（seal のフォーマットが変わるだけ）
+2. Pipeline code requires no changes (only the seal format changes)
 
-3. 過去の MockVerifier レコードと新しい Production レコードは
-   異なるコントラクトに記録される（V2-Mock / V2-Prod）
+3. Past MockVerifier records and new Production records
+   will be on different contracts (V2-Mock / V2-Prod)
 ```
 
-### 4.8 LensMint パターンとの完全対比
-
-| 要素 | LensMint Camera | VeriCall V2 |
-|------|----------------|-------------|
-| **プロジェクト概要** | Web3 カメラ — 写真の真正性証明 | AI 電話受付 — 判定結果の真正性証明 |
-| **ETHGlobal 受賞** | Buenos Aires 2025 Finalist + vlayer Prize | — |
-| **Web Proof 対象 URL** | IPFS/NFT メタデータ API | `/api/witness/decision/{callSid}` |
-| **JMESPath 抽出** | 写真ハッシュ・メタデータ | `["decision", "reason"]` |
-| **Verifier** | `RiscZeroMockVerifier(0xFFFFFFFF)` | `RiscZeroMockVerifier(0xFFFFFFFF)` |
-| **verify() 呼び出し** | ✅ `LensMintVerifier.sol` L62 | ✅ `VeriCallRegistryV2.sol` |
-| **sha256 ダイジェスト** | ✅ `sha256(journalData)` | ✅ `sha256(journalDataAbi)` |
-| **Journal abi.decode** | ✅ 6 fields | ✅ 6 fields (同一フォーマット) |
-| **フィールド検証** | notaryKeyFP, method, url, queries, data | notaryKeyFP, method, url, data |
-| **Production 切替パス** | 環境変数 `RISC_ZERO_VERIFIER_ADDRESS` | コンストラクタ注入 |
-| **getProvenData()** | ❌ なし | ✅ on-chain デコード読み取り |
-| **verified フラグ** | ❌ なし | ✅ CallRecord.verified |
-
-### 4.9 ファイル構成 (V2 追加分)
+### 4.8 File Structure (V2 Additions)
 
 ```
 contracts/
-├── VeriCallRegistry.sol              # V1 (Phase 1, 既存, 0xe454ca...)
-├── VeriCallRegistryV2.sol            # V2 (Phase 2, 新規) ← NOW
-├── RiscZeroMockVerifier.sol          # Mock Verifier (新規)
+├── VeriCallRegistry.sol              # V1 (Phase 1, existing, 0xe454ca...)
+├── VeriCallRegistryV2.sol            # V2 (Phase 2, new) ← CURRENT
+├── RiscZeroMockVerifier.sol          # Mock Verifier (new)
 ├── interfaces/
-│   └── IRiscZeroVerifier.sol         # RISC Zero 標準 interface (新規)
-├── deployment.json                   # デプロイメント情報
-└── out/                              # Forge ビルド出力
+│   └── IRiscZeroVerifier.sol         # RISC Zero standard interface (new)
+├── deployment.json                   # Deployment info (Single Source of Truth)
+└── out/                              # Forge build output
     ├── VeriCallRegistry.sol/
     ├── VeriCallRegistryV2.sol/
     └── RiscZeroMockVerifier.sol/
 
 scripts/
-├── check-registry.ts                 # CLI インスペクター (V1/V2 対応)
-└── deploy-v2.ts                      # V2 デプロイスクリプト (新規)
+├── check-registry.ts                 # CLI inspector (V1/V2 compatible)
+└── deploy-v2.ts                      # V2 deploy script (with auto-sync)
 
 lib/witness/
-├── abi.ts                            # V2 ABI (更新)
-├── on-chain.ts                       # on-chain 操作 (V2 対応に更新)
-├── pipeline.ts                       # パイプライン (変更なし — 関数 I/F 同一)
-├── vlayer-api.ts                     # vlayer API クライアント (変更なし)
-└── decision-store.ts                 # Cloud SQL ストア (変更なし)
+├── abi.ts                            # V2 ABI (updated)
+├── on-chain.ts                       # On-chain operations (V2 compatible)
+├── pipeline.ts                       # Pipeline (no changes — same function interface)
+├── vlayer-api.ts                     # vlayer API client (no changes)
+└── decision-store.ts                 # Cloud SQL store (no changes)
 ```

@@ -1,10 +1,16 @@
 {
+  "version": "v2",
   "network": "base-sepolia",
   "chainId": 84532,
-  "contractAddress": "0xe454ca755219310b2728d39db8039cbaa7abc3b8",
+  "contractAddress": "0x656ae703ca94cc4247493dec6f9af9c6f974ba82",
+  "mockVerifierAddress": "0x9afb5f28e2317d75212a503eecf02dce4a7b6f0e",
   "deployer": "0x485A974140923524a74B0D72aF117852F31B412D",
-  "txHash": "0xac861bd07b87a7822477baed5d520dda474be8b68c7acbef3a18341da8584491",
-  "blockNumber": 37327227,
+  "txHash": "0x5470e86a757826579303dd3f0a78cf89f5a4ed928f47fd1b6b4047b059979eee",
+  "mockVerifierTxHash": "0xfd7710552bdfb38e4758557bf2c72b4f34d172b898381c644b949408b996a355",
+  "blockNumber": 37335241,
   "guestId": "0x6e251f4d993427d02a4199e1201f3b54462365d7c672a51be57f776d509b47eb",
-  "deployedAt": "2026-02-07T00:05:41.067Z"
+  "deployedAt": "2026-02-07T15:00:00.000Z",
+  "v1Address": "0xe454ca755219310b2728d39db8039cbaa7abc3b8",
+  "verified": true,
+  "notes": "MockVerifier pattern (LensMint). Replace mockVerifier with RiscZeroVerifierRouter for production."
 }

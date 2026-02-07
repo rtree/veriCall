@@ -76,8 +76,34 @@ jobs:
           sync_secret "VLAYER_CLIENT_ID" "${{ secrets.VLAYER_CLIENT_ID }}"
           sync_secret "VLAYER_WEB_PROVER_URL" "${{ secrets.VLAYER_WEB_PROVER_URL }}"
           sync_secret "VLAYER_ZK_PROVER_URL" "${{ secrets.VLAYER_ZK_PROVER_URL }}"
-          sync_secret "VERICALL_CONTRACT_ADDRESS" "${{ secrets.VERICALL_CONTRACT_ADDRESS }}"
           echo "✅ シークレット同期完了"
+
+      # コントラクトアドレスは deployment.json (Single Source of Truth) から同期
+      # GitHub Secretには依存しない — deploy-v2.ts が deployment.json を自動生成する
+      - name: Sync Contract Address from deployment.json
+        run: |
+          DEPLOYMENT_FILE="contracts/deployment.json"
+          if [ ! -f "$DEPLOYMENT_FILE" ]; then
+            echo "❌ $DEPLOYMENT_FILE が見つかりません"
+            echo "   npx tsx scripts/deploy-v2.ts を実行してコントラクトをデプロイしてください"
+            exit 1
+          fi
+
+          CONTRACT_ADDR=$(jq -r '.contractAddress' "$DEPLOYMENT_FILE")
+          if [ -z "$CONTRACT_ADDR" ] || [ "$CONTRACT_ADDR" = "null" ]; then
+            echo "❌ deployment.json に contractAddress が設定されていません"
+            exit 1
+          fi
+
+          echo "📄 deployment.json → contractAddress: $CONTRACT_ADDR"
+
+          # GCP Secret Manager に同期
+          if gcloud secrets describe "VERICALL_CONTRACT_ADDRESS" --project=${{ env.PROJECT_ID }} > /dev/null 2>&1; then
+            printf '%s' "$CONTRACT_ADDR" | gcloud secrets versions add "VERICALL_CONTRACT_ADDRESS" --data-file=- --project=${{ env.PROJECT_ID }}
+          else
+            printf '%s' "$CONTRACT_ADDR" | gcloud secrets create "VERICALL_CONTRACT_ADDRESS" --data-file=- --project=${{ env.PROJECT_ID }}
+          fi
+          echo "✅ VERICALL_CONTRACT_ADDRESS: $CONTRACT_ADDR (from deployment.json)"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

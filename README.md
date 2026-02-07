@@ -22,7 +22,7 @@ Every time the AI makes a call screening decision, VeriCall:
 1. **Records the inputs** — the conversation transcript (what the caller actually said)
 2. **Records the ruleset** — the system prompt hash (the exact rules the AI was given)
 3. **Records the output** — the decision (BLOCK or RECORD) and the AI's reasoning
-4. **Generates a Web Proof** — a cryptographic attestation via TLSNotary that the AI service (Gemini) actually produced this specific output for this specific input
+4. **Generates a Web Proof** — a cryptographic attestation via TLSNotary that VeriCall's Decision API genuinely returned this specific decision for this specific call
 5. **Compresses to a ZK Proof** — via RISC Zero, the web proof is compressed into a succinct zero-knowledge proof suitable for on-chain storage
 6. **Submits on-chain** — the proof is recorded on Base, creating an immutable, publicly verifiable audit trail
 
@@ -166,7 +166,7 @@ veriCall/
 
 ### The Core Idea
 
-When VeriCall's AI screens a call, it sends the conversation to **Gemini 2.5 Flash** via HTTPS. That HTTPS request-response is a TLS session. Using vlayer's **TLSNotary** protocol, we can have a third-party Notary cryptographically attest that Gemini genuinely produced a specific response for a specific input — without the Notary ever seeing the plaintext.
+When VeriCall's AI screens a call, the decision (BLOCK/RECORD) and reasoning are stored and served via VeriCall's **Decision API** (`/api/witness/decision/{callSid}`) over HTTPS. That HTTPS response is a TLS session. Using vlayer's **TLSNotary** protocol, we can have a third-party Notary cryptographically attest that VeriCall's server genuinely returned a specific decision for a specific call — without the Notary ever seeing the plaintext.
 
 This attestation (Web Proof) is then compressed into a **ZK Proof** and stored **on-chain**, creating an immutable record that anyone can verify.
 
@@ -191,33 +191,30 @@ interface DecisionData {
 
 #### Step 2: Generate Web Proof (vlayer Web Prover)
 
-The Gemini API call is notarized using TLSNotary through vlayer's **server-side proving**:
+VeriCall's **Decision API** response is notarized using TLSNotary through vlayer's **server-side proving**:
 
 ```
-VeriCall Server ──→ vlayer Web Prover ──→ Gemini API
-                    (TLSNotary / MPC)
-                         │
-                         ▼
-                    Web Proof
-                    (cryptographic attestation of TLS transcript)
+vlayer Web Prover ──GET──→ VeriCall Decision API
+(TLSNotary / MPC)          /api/witness/decision/{callSid}
+       │
+       ▼
+  Web Proof
+  (cryptographic attestation that this server returned this JSON)
 ```
 
 - The Web Prover joins the TLS connection as a Notary via Multi-Party Computation
 - It **never sees the plaintext** — it only holds half the encryption key
-- It signs a commitment proving the server (Gemini) genuinely produced the response
-- Sensitive headers (API keys) are **redacted** from the proof
+- It signs a commitment proving VeriCall's server genuinely returned this decision
+- The proven URL points to VeriCall's Decision API, which serves the AI's decision, reason, and metadata
 
 ```
 POST https://web-prover.vlayer.xyz/api/v1/prove
 {
-  "url": "https://generativelanguage.googleapis.com/...",
-  "method": "POST",
-  "headers": ["Content-Type: application/json", "Authorization: Bearer <token>"],
-  "body": "<system prompt + conversation history>",
-  "redaction": [{ "request": { "headers": ["Authorization"] } }]
+  "url": "https://vericall-kkz6k4jema-uc.a.run.app/api/witness/decision/CA1234...",
+  "headers": []
 }
 
-→ Returns: { data: "0x014000...", version: "0.1.0-alpha.12", meta: {...} }
+→ Returns: { data: "base64-encoded-tlsnotary-presentation...", version: "...", meta: {...} }
 ```
 
 #### Step 3: Compress to ZK Proof (vlayer ZK Prover)
@@ -230,59 +227,51 @@ POST https://zk-prover.vlayer.xyz/api/v0/compress-web-proof
   "presentation": { <web proof from Step 2> },
   "extraction": {
     "response.body": {
-      "jmespath": ["candidates[0].content.parts[0].text"]
+      "jmespath": ["decision", "reason"]
     }
   }
 }
 
-→ Returns: { zkProof: "0xffffffff...", journalDataAbi: "0xa7e62d..." }
+→ Returns: { zkProof: "0xffffffff...", journalDataAbi: "0x000000..." }
 ```
 
 The `journalDataAbi` is an ABI-encoded tuple containing:
 - `notaryKeyFingerprint` — which notary signed the proof
-- `method` / `url` — the exact HTTP request proven
-- `tlsTimestamp` — when the TLS session occurred (not self-reported)
-- `extractionHash` — hash of the extraction query (prevents query substitution)
-- `extractedValue0` — the AI's actual response text
+- `method` / `url` — the exact HTTP request proven (GET to VeriCall's Decision API)
+- `timestamp` — when the TLS session occurred (not self-reported)
+- `queriesHash` — hash of the URL query parameters (prevents query substitution)
+- `extractedData` — the decision and reason extracted from VeriCall's response (e.g., `["BLOCK","Caller was selling SEO services..."]`)
 
-#### Step 4: Submit On-Chain (Base Sepolia)
+#### Step 4: On-Chain Registration + ZK Verification (Base Sepolia)
 
-```solidity
-// VeriCallRegistry.sol (planned)
-contract VeriCallRegistry {
+The ZK proof and journal are submitted to **VeriCallRegistryV2** on Base Sepolia. The contract performs on-chain ZK proof verification before storing the record:
 
-    struct CallProof {
-        bytes32 systemPromptHash;   // Hash of AI ruleset — publicly verifiable
-        bytes32 transcriptHash;     // Hash of conversation input
-        bytes   zkProof;            // vlayer ZK proof (RISC Zero seal)
-        bytes   journalDataAbi;     // ABI-encoded verified outputs
-        uint256 timestamp;          // TLS session timestamp
-        address submitter;          // Who submitted this proof
-    }
-
-    mapping(bytes32 => CallProof) public proofs;  // callId → proof
-
-    event ProofSubmitted(bytes32 indexed callId, bytes32 systemPromptHash, uint256 timestamp);
-
-    function submitProof(
-        bytes32 callId,
-        bytes32 systemPromptHash,
-        bytes32 transcriptHash,
-        bytes calldata zkProof,
-        bytes calldata journalDataAbi
-    ) external {
-        proofs[callId] = CallProof({
-            systemPromptHash: systemPromptHash,
-            transcriptHash: transcriptHash,
-            zkProof: zkProof,
-            journalDataAbi: journalDataAbi,
-            timestamp: block.timestamp,
-            submitter: msg.sender
-        });
-        emit ProofSubmitted(callId, systemPromptHash, block.timestamp);
-    }
-}
 ```
+registerCallDecision(callId, callerHash, decision, reason, seal, journalDataAbi, sourceUrl)
+    │
+    ├─ Step A: ZK Proof Verification (on-chain)
+    │   verifier.verify(seal, imageId, sha256(journalDataAbi))
+    │   └─ Calls IRiscZeroVerifier — reverts if proof is invalid
+    │   └─ emit ProofVerified(callId, imageId, journalDigest)
+    │
+    ├─ Step B: Journal Decode & Validation
+    │   abi.decode(journalDataAbi) → 6 fields:
+    │   ├─ notaryKeyFingerprint ≠ bytes32(0)    ← TLSNotary key exists
+    │   ├─ method == "GET"                       ← Valid HTTP method
+    │   ├─ bytes(url).length > 0                 ← URL exists
+    │   └─ bytes(extractedData).length > 0       ← Extracted data exists
+    │
+    ├─ Step C: Immutable Record Storage
+    │   records[callId] = CallRecord{ ..., verified: true }
+    │   └─ journalHash = keccak256(journalDataAbi) stored as commitment
+    │
+    └─ Step D: Event Emission
+        └─ emit CallDecisionRecorded(callId, callerHash, decision, timestamp, submitter)
+```
+
+**Key design**: The `verifier` is injected via constructor (`IRiscZeroVerifier` interface), enabling a seamless upgrade path from MockVerifier (development) to RiscZeroVerifierRouter (production Groth16) without changing contract code.
+
+**Reading proven data**: Anyone can call `getProvenData(callId)` to retrieve the decoded journal fields (notary key fingerprint, HTTP method, URL, timestamp, extraction hash, extracted values) directly from the contract.
 
 ### What Gets Proven
 
@@ -290,7 +279,7 @@ contract VeriCallRegistry {
 |---------|-------------------|
 | **The AI ruleset** | `systemPromptHash` — anyone can check the hash matches the company's published rules |
 | **The input** | `transcriptHash` — the conversation that was fed to the AI is hashed and recorded |
-| **The AI actually responded** | Web Proof via TLSNotary — cryptographic proof that Gemini produced this output |
+| **The decision is authentic** | Web Proof via TLSNotary — cryptographic proof that VeriCall's Decision API genuinely returned this decision and reason |
 | **The output wasn't tampered** | ZK Proof — compressed, on-chain verifiable attestation via RISC Zero |
 | **When it happened** | `tlsTimestamp` from the TLS session itself (not self-reported by the company) |
 | **Privacy preserved** | Caller phone is hashed; API keys are redacted; ZK proof hides raw data |
@@ -299,13 +288,14 @@ contract VeriCallRegistry {
 
 ```
 1. Caller receives a callId reference after the call
-2. Look up: VeriCallRegistry.proofs(callId) on Base Sepolia
-3. Retrieve: systemPromptHash, transcriptHash, zkProof, journalDataAbi
-4. Check: Does systemPromptHash match the company's publicly published ruleset?
-5. Check: Is the zkProof valid? (on-chain verification via RISC Zero)
-6. Check: Does journalDataAbi contain the expected decision?
-7. Result: Cryptographic proof that this AI made this decision,
-           using these specific rules, given this specific input, at this exact time
+2. Look up: VeriCallRegistryV2.getRecord(callId) on Base Sepolia
+3. Check: record.verified == true (ZK proof was validated on-chain)
+4. Read:  VeriCallRegistryV2.getProvenData(callId) → decoded journal fields
+5. Check: Does the extractedData contain the expected decision and reason?
+6. Check: Does the sourceUrl point to the expected VeriCall Decision API?
+7. Optionally: verifyJournal(callId, journalDataAbi) to confirm journal integrity
+8. Result: Cryptographic proof that VeriCall's AI made this specific decision,
+           as attested by TLSNotary and verified by ZK proof on-chain
 ```
 
 ## API Endpoints
@@ -400,10 +390,14 @@ gcloud run deploy vericall \
 | Email notifications (OK/SCAM templates) | ✅ Production |
 | AI-powered call summaries (Gemini) | ✅ Production |
 | Utterance buffering for speech quality | ✅ Production |
-| vlayer Web Proof generation | 🔧 Scaffolded |
-| vlayer ZK Proof compression | 🔧 Scaffolded |
-| On-chain proof submission (Base) | 📋 Planned |
-| Verifier smart contract | 📋 Planned |
+| vlayer Web Proof generation | ✅ Implemented |
+| vlayer ZK Proof compression | ✅ Implemented |
+| On-chain proof submission (Base Sepolia) | ✅ Implemented |
+| On-chain ZK verification (VeriCallRegistryV2) | ✅ Implemented (MockVerifier) |
+| CLI registry inspector (V1/V2) | ✅ Implemented |
+| Explorer API (`/api/explorer`) | ✅ Implemented |
+| Single Source of Truth (deployment.json) | ✅ Implemented |
+| Production Groth16 verification | 📋 Planned (awaiting vlayer production proofs) |
 | Public verification dashboard | 📋 Planned |
 
 ## License

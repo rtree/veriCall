@@ -1,13 +1,18 @@
 /**
- * VeriCallRegistry Contract ABI
- * Auto-generated from contracts/out/VeriCallRegistry.sol/VeriCallRegistry.json
- * Deployed: 0xe454ca755219310b2728d39db8039cbaa7abc3b8 (Base Sepolia)
+ * VeriCallRegistry Contract ABIs
+ * V1: 0xe454ca755219310b2728d39db8039cbaa7abc3b8 (Base Sepolia) — Phase 1
+ * V2: Deployed via scripts/deploy-v2.ts — Phase 2 (MockVerifier + verify + journal decode)
  */
+
+// ─── V2 ABI (Active) ──────────────────────────────────────────
 
 export const VERICALL_REGISTRY_ABI = [
   {
     type: 'constructor',
-    inputs: [{ name: '_guestId', type: 'bytes32' }],
+    inputs: [
+      { name: '_verifier', type: 'address' },
+      { name: '_imageId', type: 'bytes32' },
+    ],
     stateMutability: 'nonpayable',
   },
   {
@@ -43,8 +48,23 @@ export const VERICALL_REGISTRY_ABI = [
           { name: 'sourceUrl', type: 'string' },
           { name: 'timestamp', type: 'uint256' },
           { name: 'submitter', type: 'address' },
+          { name: 'verified', type: 'bool' },
         ],
       },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'getProvenData',
+    inputs: [{ name: 'callId', type: 'bytes32' }],
+    outputs: [
+      { name: 'notaryKeyFingerprint', type: 'bytes32' },
+      { name: 'method', type: 'string' },
+      { name: 'url', type: 'string' },
+      { name: 'proofTimestamp', type: 'uint256' },
+      { name: 'queriesHash', type: 'bytes32' },
+      { name: 'extractedData', type: 'string' },
     ],
     stateMutability: 'view',
   },
@@ -79,9 +99,16 @@ export const VERICALL_REGISTRY_ABI = [
   },
   {
     type: 'function',
-    name: 'guestId',
+    name: 'imageId',
     inputs: [],
     outputs: [{ name: '', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'verifier',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
     stateMutability: 'view',
   },
   {
@@ -93,8 +120,8 @@ export const VERICALL_REGISTRY_ABI = [
   },
   {
     type: 'function',
-    name: 'updateGuestId',
-    inputs: [{ name: '_guestId', type: 'bytes32' }],
+    name: 'updateImageId',
+    inputs: [{ name: '_imageId', type: 'bytes32' }],
     outputs: [],
     stateMutability: 'nonpayable',
   },
@@ -126,11 +153,44 @@ export const VERICALL_REGISTRY_ABI = [
   },
   {
     type: 'event',
-    name: 'GuestIdUpdated',
+    name: 'ProofVerified',
     inputs: [
-      { name: 'oldGuestId', type: 'bytes32', indexed: false },
-      { name: 'newGuestId', type: 'bytes32', indexed: false },
+      { name: 'callId', type: 'bytes32', indexed: true },
+      { name: 'imageId', type: 'bytes32', indexed: false },
+      { name: 'journalDigest', type: 'bytes32', indexed: false },
     ],
     anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'ImageIdUpdated',
+    inputs: [
+      { name: 'oldImageId', type: 'bytes32', indexed: false },
+      { name: 'newImageId', type: 'bytes32', indexed: false },
+    ],
+    anonymous: false,
+  },
+] as const;
+
+// ─── MockVerifier ABI ──────────────────────────────────────────
+
+export const MOCK_VERIFIER_ABI = [
+  {
+    type: 'function',
+    name: 'SELECTOR',
+    inputs: [],
+    outputs: [{ name: '', type: 'bytes4' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'verify',
+    inputs: [
+      { name: 'seal', type: 'bytes' },
+      { name: 'imageId', type: 'bytes32' },
+      { name: 'journalDigest', type: 'bytes32' },
+    ],
+    outputs: [],
+    stateMutability: 'pure',
   },
 ] as const;

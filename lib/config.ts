@@ -1,7 +1,27 @@
 /**
  * VeriCall Configuration
  * 共通設定ファイル
+ *
+ * コントラクトアドレスの優先順位:
+ *   1. 環境変数 VERICALL_CONTRACT_ADDRESS（Cloud Run / .env.local）
+ *   2. contracts/deployment.json（deploy-v2.ts が自動生成）
+ *   ハードコードフォールバックは持たない。設定漏れは起動時に検知する。
  */
+
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
+
+// ─── deployment.json loader ───────────────────────────────────
+
+function loadDeploymentAddress(): string {
+  try {
+    const depPath = resolve(process.cwd(), 'contracts/deployment.json');
+    const dep = JSON.parse(readFileSync(depPath, 'utf-8'));
+    return dep.contractAddress || '';
+  } catch {
+    return '';
+  }
+}
 
 // Twilio Configuration
 export const twilioConfig = {
@@ -32,8 +52,16 @@ export const chainConfig = {
 };
 
 // VeriCallRegistry Contract (Base Sepolia)
+// Single Source of Truth: env var > deployment.json > error
+const _contractAddr = process.env.VERICALL_CONTRACT_ADDRESS || loadDeploymentAddress();
+if (!_contractAddr) {
+  console.warn(
+    '⚠️  VERICALL_CONTRACT_ADDRESS not set and contracts/deployment.json not found. ' +
+    'Run `npx tsx scripts/deploy-v2.ts` to deploy and generate it.',
+  );
+}
 export const contractConfig = {
-  address: process.env.VERICALL_CONTRACT_ADDRESS || '0xe454ca755219310b2728d39db8039cbaa7abc3b8',
+  address: _contractAddr,
 };
 
 // Server Configuration

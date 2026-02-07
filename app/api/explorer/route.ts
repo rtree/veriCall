@@ -2,15 +2,12 @@ import { NextResponse } from 'next/server';
 import { createPublicClient, http } from 'viem';
 import { baseSepolia } from 'viem/chains';
 import { VERICALL_REGISTRY_ABI } from '@/lib/witness/abi';
+import { contractConfig, chainConfig } from '@/lib/config';
 
 // ─── Config ────────────────────────────────────────────────────
 
-const CONTRACT = (
-  process.env.VERICALL_CONTRACT_ADDRESS ||
-  '0xe454ca755219310b2728d39db8039cbaa7abc3b8'
-) as `0x${string}`;
-
-const RPC_URL = process.env.ETHEREUM_RPC_URL || 'https://sepolia.base.org';
+const CONTRACT = contractConfig.address as `0x${string}`;
+const RPC_URL = chainConfig.rpcUrl;
 const BASESCAN = 'https://sepolia.basescan.org';
 
 const DECISION_LABELS = ['UNKNOWN', 'ACCEPT', 'BLOCK', 'RECORD'] as const;
@@ -20,46 +17,6 @@ const DECISION_EMOJI: Record<string, string> = {
   BLOCK: '🚫',
   RECORD: '📝',
 };
-
-// ─── Journal Decoder ────────────────────────────────────────
-
-function decodeJournal(hex: string) {
-  try {
-    const buf = Buffer.from(hex.replace(/^0x/, ''), 'hex');
-    const strings: string[] = [];
-    let i = 0;
-    while (i < buf.length) {
-      let start = i;
-      while (i < buf.length && buf[i] >= 0x20 && buf[i] < 0x7f) i++;
-      if (i - start >= 3) {
-        strings.push(buf.subarray(start, i).toString('utf-8'));
-      }
-      i++;
-    }
-
-    const method = strings.find((s) => /^(GET|POST|PUT|DELETE|PATCH)$/.test(s));
-    const url = strings.find((s) => s.startsWith('https://'));
-    const knownNonValues = new Set([method, url].filter(Boolean));
-    const extractedValues = strings.filter(
-      (s) =>
-        !knownNonValues.has(s) &&
-        s.length >= 3 &&
-        !s.startsWith('0x') &&
-        !s.startsWith('http') &&
-        /^[\x20-\x7e]+$/.test(s) &&
-        /[a-zA-Z0-9]/.test(s) &&
-        !/^[^a-zA-Z0-9]*$/.test(s),
-    );
-
-    // Categorize values
-    const price = extractedValues.find((v) => /^\d+\.\d+$/.test(v));
-    const symbol = extractedValues.find((v) => /^[A-Z]{3,10}$/.test(v));
-
-    return { method: method || 'GET', url, price, symbol, raw: extractedValues };
-  } catch {
-    return { method: 'GET', url: undefined, price: undefined, symbol: undefined, raw: [] };
-  }
-}
 
 // ─── API Route ──────────────────────────────────────────────
 
@@ -85,10 +42,17 @@ export async function GET() {
       functionName: 'owner',
     })) as string;
 
-    const guestId = (await client.readContract({
+    // V2: imageId + verifier
+    const imageId = (await client.readContract({
       address: CONTRACT,
       abi: VERICALL_REGISTRY_ABI,
-      functionName: 'guestId',
+      functionName: 'imageId',
+    })) as string;
+
+    const verifier = (await client.readContract({
+      address: CONTRACT,
+      abi: VERICALL_REGISTRY_ABI,
+      functionName: 'verifier',
     })) as string;
 
     const totalRecords = Number(stats[0]);
@@ -112,10 +76,35 @@ export async function GET() {
 
       const decision = Number(record.decision);
       const decisionLabel = DECISION_LABELS[decision] || 'UNKNOWN';
-      const journal = decodeJournal(record.journalDataAbi);
       const timestamp = Number(record.timestamp);
 
-      // Verify journal
+      // V2: use on-chain getProvenData() for journal decoding
+      let provenData = {
+        method: 'N/A',
+        url: record.sourceUrl,
+        proofTimestamp: 0,
+        extractedData: '',
+        notaryKeyFingerprint: '',
+        queriesHash: '',
+      };
+      try {
+        const pd = (await client.readContract({
+          address: CONTRACT,
+          abi: VERICALL_REGISTRY_ABI,
+          functionName: 'getProvenData',
+          args: [callId],
+        })) as any;
+        provenData = {
+          notaryKeyFingerprint: pd[0] || '',
+          method: pd[1] || 'N/A',
+          url: pd[2] || record.sourceUrl,
+          proofTimestamp: Number(pd[3] || 0),
+          queriesHash: pd[4] || '',
+          extractedData: pd[5] || '',
+        };
+      } catch { /* journal may not be decodable */ }
+
+      // Verify journal integrity
       let journalVerified = false;
       try {
         journalVerified = (await client.readContract({
@@ -137,25 +126,23 @@ export async function GET() {
         timestamp,
         timestampISO: new Date(timestamp * 1000).toISOString(),
         submitter: record.submitter,
+        verified: record.verified ?? false,
         zkProofSeal: record.zkProofSeal,
         journalHash: record.journalHash,
         journalVerified,
-        provenData: {
-          method: journal.method,
-          url: journal.url || record.sourceUrl,
-          price: journal.price,
-          symbol: journal.symbol,
-        },
+        provenData,
       });
     }
 
     return NextResponse.json({
+      version: 'v2',
       contract: CONTRACT,
       network: 'Base Sepolia',
       chainId: 84532,
       basescan: `${BASESCAN}/address/${CONTRACT}`,
       owner,
-      guestId,
+      imageId,
+      verifier,
       stats: {
         total: totalRecords,
         accepted: Number(stats[1]),
