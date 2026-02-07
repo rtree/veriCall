@@ -12,9 +12,7 @@
 
 **Verifiable AI Call Screening — Proving Fairness On-Chain**
 
-<img width="1764" height="1039" alt="image" src="https://github.com/user-attachments/assets/46d9b0ca-4f05-4421-b9ff-fdf643d71228" />
-
-<img width="1810" height="774" alt="image" src="https://github.com/user-attachments/assets/47026f4e-58e2-47b7-b505-8e490054e4e1" />
+<img width="1000" alt="image" src="https://github.com/user-attachments/assets/46d9b0ca-4f05-4421-b9ff-fdf643d71228" />
 
 ## The Problem
 
@@ -175,6 +173,8 @@ Anyone can call `getProvenData(callId)` to decode all 9 journal fields directly 
 Open **[/demo](https://vericall-kkz6k4jema-uc.a.run.app/demo)** — call the number shown and watch the full pipeline in real-time:
 
 📞 Call → 🤖 AI → ⚖️ Decision → 🔐 WebProof → 🧮 ZK → ⛓️ On-Chain
+
+<img width="1000" alt="image" src="https://github.com/user-attachments/assets/47026f4e-58e2-47b7-b505-8e490054e4e1" />
 
 ### 🔍 Verify Records
 
