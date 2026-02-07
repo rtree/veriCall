@@ -40,3 +40,4 @@ next-env.d.ts
 playground/output/
 playground/*.log
 scripts/setup-gcp-workload-identity.sh
+DEPLOYER_PRIVATE_KEY
