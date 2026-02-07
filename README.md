@@ -12,8 +12,6 @@
 
 **Verifiable AI Call Screening — Proving Fairness On-Chain**
 
-<img width="1000" alt="image" src="https://github.com/user-attachments/assets/46d9b0ca-4f05-4421-b9ff-fdf643d71228" />
-
 ## The Problem
 
 Companies use AI to screen phone calls — blocking spam while forwarding legitimate business. But who watches the AI?
@@ -48,6 +46,8 @@ This pattern — **proving that an AI made a specific decision given specific in
 | 🏦 Loan Decisions | AI fairly assessed creditworthiness |
 | 🛡️ Content Moderation | AI fairly applied guidelines |
 | ⚖️ Insurance Claims | AI fairly processed claim |
+
+<img width="1000" alt="VeriCall Demo Screenshot" src="https://github.com/user-attachments/assets/46d9b0ca-4f05-4421-b9ff-fdf643d71228" />
 
 ## What Gets Proven
 
