@@ -11,6 +11,7 @@ import { mulawToLinear16 } from './audio-utils';
 import { sendVoiceAINotification } from './email-notify';
 import { createWitness, hashPhoneNumber } from '@/lib/witness/pipeline';
 import { storeDecisionForProof } from '@/lib/witness/decision-store';
+import { demoBus } from '@/lib/demo/event-bus';
 
 export interface SessionConfig {
   callSid: string;
@@ -101,6 +102,10 @@ export class VoiceAISession {
         case 'start':
           this.streamSid = message.start?.streamSid || null;
           console.log(`[Session ${this.config.callSid}] Stream started: ${this.streamSid}`);
+          demoBus.emitDemo('call:start', this.config.callSid, {
+            from: this.config.from,
+            streamSid: this.streamSid,
+          });
           // Send initial greeting
           await this.sendGreeting();
           break;
@@ -171,6 +176,9 @@ export class VoiceAISession {
 
     const greeting = "Hello, this is an automated assistant. May I ask who's calling and the purpose of your call?";
     console.log(`[Session ${this.config.callSid}] 🎤 Greeting: "${greeting}"`);
+    demoBus.emitDemo('call:greeting', this.config.callSid, {
+      text: greeting, role: 'ai',
+    });
     
     // Add to Gemini history so it doesn't repeat
     this.gemini.addInitialGreeting(greeting);
@@ -363,8 +371,15 @@ export class VoiceAISession {
 
     try {
       // Get AI response
+      demoBus.emitDemo('stt:transcript', this.config.callSid, {
+        text: transcript, role: 'caller',
+      });
       const response = await this.gemini.chat(transcript);
       console.log(`[Session ${this.config.callSid}] AI response: "${response.text}" (decision: ${response.decision})`);
+      demoBus.emitDemo('ai:response', this.config.callSid, {
+        text: response.text, role: 'ai',
+        decision: response.decision ?? null,
+      });
 
       // Speak the response
       await this.speak(response.text);
@@ -372,6 +387,10 @@ export class VoiceAISession {
       // Check for final decision
       if (response.decision) {
         this.decision = response.decision;
+        demoBus.emitDemo('ai:decision', this.config.callSid, {
+          decision: response.decision,
+          reason: response.text,
+        });
         await this.handleDecision();
       }
     } catch (error) {
@@ -468,6 +487,9 @@ export class VoiceAISession {
         summary,
       });
       console.log(`[Session ${this.config.callSid}] Email notification sent (${this.decision}) with summary`);
+      demoBus.emitDemo('email:sent', this.config.callSid, {
+        decision: this.decision, summary,
+      });
     } catch (error) {
       console.error(`[Session ${this.config.callSid}] Failed to send email:`, error);
     }
@@ -574,6 +596,9 @@ export class VoiceAISession {
       clearTimeout(this.silenceTimeout);
     }
     this.stt.stop();
+    demoBus.emitDemo('call:end', this.config.callSid, {
+      decision: this.decision,
+    });
     console.log(`[Session ${this.config.callSid}] Cleaned up`);
   }
 

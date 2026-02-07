@@ -15,6 +15,7 @@ import {
   compressToZKProof as vlayerZKProof,
 } from '@/lib/witness/vlayer-api';
 import { submitDecisionOnChain } from '@/lib/witness/on-chain';
+import { demoBus } from '@/lib/demo/event-bus';
 
 // ─── Types (duplicated here to avoid cross-boundary imports) ──
 
@@ -158,6 +159,12 @@ async function processWitnessAsync(
 ): Promise<void> {
   const tag = `⛓️ [Witness ${record.id}]`;
 
+  demoBus.emitDemo('witness:start', record.callSid, {
+    witnessId: record.id,
+    decision: data.action,
+    reason: data.reason,
+  });
+
   if (!vlayerConfig.apiKey) {
     console.log(`${tag} VLAYER_API_KEY not set — skipping proof pipeline`);
     updateStatus(record.id, 'failed', {
@@ -177,6 +184,11 @@ async function processWitnessAsync(
     },
   });
   console.log(`${tag} ✅ Web Proof generated (${webProof.data.length} chars)`);
+  demoBus.emitDemo('witness:web-proof', record.callSid, {
+    witnessId: record.id,
+    proofSize: webProof.data.length,
+    sourceUrl: proofUrl,
+  });
 
   // Step 2: ZK Proof
   console.log(
@@ -195,6 +207,10 @@ async function processWitnessAsync(
     zkProof: { hash: proofHash, generatedAt: new Date().toISOString() },
   });
   console.log(`${tag} ✅ ZK Proof compressed (seal hash: ${proofHash})`);
+  demoBus.emitDemo('witness:zk-proof', record.callSid, {
+    witnessId: record.id,
+    sealHash: proofHash,
+  });
 
   // Step 3: On-Chain
   const decisionNum = DECISION_MAP[data.action] || 0;
@@ -233,8 +249,17 @@ async function processWitnessAsync(
     console.log(
       `${tag} 🔗 https://sepolia.basescan.org/tx/${result.txHash}`,
     );
+    demoBus.emitDemo('witness:on-chain', record.callSid, {
+      witnessId: record.id,
+      txHash: result.txHash,
+      blockNumber: result.blockNumber,
+    });
   } catch (err) {
     console.error(`${tag} ❌ On-chain submission failed:`, err);
+    demoBus.emitDemo('witness:failed', record.callSid, {
+      witnessId: record.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
     updateStatus(record.id, 'failed', {
       error: `On-chain failed: ${err instanceof Error ? err.message : String(err)}`,
     });

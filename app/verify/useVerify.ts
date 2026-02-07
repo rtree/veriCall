@@ -74,6 +74,8 @@ export interface Check {
   label: string;
   status: CheckStatus;
   detail: string;
+  /** Optional BaseScan or explorer link for the detail value */
+  detailLink?: string;
 }
 
 export interface RecordData {
@@ -198,7 +200,8 @@ export function useVerify() {
       } catch { /* not mock */ }
       contractData.isMockVerifier = isMock;
       contractChecks[2].status = 'pass';
-      contractChecks[2].detail = isMock ? `MockVerifier (dev)` : verifierAddr.slice(0, 10) + '...';
+      contractChecks[2].detail = isMock ? `MockVerifier (dev)` : verifierAddr.slice(0, 6) + '...' + verifierAddr.slice(-4);
+      contractChecks[2].detailLink = `${CONFIG.basescan}/address/${verifierAddr}`;
       contractChecks[3].status = 'running';
       setState(s => ({ ...s, contract: { ...contractData, checks: [...contractChecks] } }));
 
@@ -208,7 +211,7 @@ export function useVerify() {
       })) as `0x${string}`;
       contractData.imageId = imageId;
       contractChecks[3].status = imageId !== '0x' + '0'.repeat(64) ? 'pass' : 'fail';
-      contractChecks[3].detail = imageId.slice(0, 14) + '...';
+      contractChecks[3].detail = imageId.slice(0, 6) + '...' + imageId.slice(-4);
       contractChecks[4].status = 'running';
       setState(s => ({ ...s, contract: { ...contractData, checks: [...contractChecks] } }));
 
@@ -218,7 +221,8 @@ export function useVerify() {
       })) as `0x${string}`;
       contractData.owner = owner;
       contractChecks[4].status = 'pass';
-      contractChecks[4].detail = owner.slice(0, 10) + '...';
+      contractChecks[4].detail = owner.slice(0, 6) + '...' + owner.slice(-4);
+      contractChecks[4].detailLink = `${CONFIG.basescan}/address/${owner}`;
       setState(s => ({ ...s, contract: { ...contractData, checks: [...contractChecks] } }));
 
       // ─── Phase 2: Records ───────────────────────────────
@@ -361,7 +365,8 @@ async function verifyRecord(
   checks.push({
     id: 'V6', label: 'Registration TX found',
     status: txHash ? 'pass' : 'fail',
-    detail: txHash ? txHash.slice(0, 14) + '...' : 'Event lookup failed',
+    detail: txHash ? txHash.slice(0, 6) + '...' + txHash.slice(-4) : 'Event lookup failed',
+    detailLink: txHash ? `${CONFIG.basescan}/tx/${txHash}` : undefined,
   });
 
   // V7: ProofVerified event

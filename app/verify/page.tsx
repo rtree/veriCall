@@ -10,7 +10,7 @@
  * Inspect source: browser DevTools → Sources → verify/page.tsx
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { useVerify, CONFIG, type Check, type RecordData } from './useVerify';
 
 /** Format hash as 0x656a...ba82 */
@@ -43,15 +43,7 @@ const DECISION_EMOJI: Record<number, string> = {
 
 export default function VerifyPage() {
   const { state, run } = useVerify();
-  const hasRun = useRef(false);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (!hasRun.current) {
-      hasRun.current = true;
-      run();
-    }
-  }, [run]);
 
   const allPassed = state.phase === 'done' && state.totalChecks === state.passedChecks;
 
@@ -94,6 +86,12 @@ export default function VerifyPage() {
         <p style={styles.trustNote}>
           🔒 This page reads <strong>only</strong> from the public blockchain. No API keys, wallets, or trust in VeriCall required.
         </p>
+
+        {state.phase === 'idle' && (
+          <button onClick={run} style={styles.startButton}>
+            ▶ Run Verification
+          </button>
+        )}
       </section>
 
       {/* ─── Result Banner ──────────────────────────────── */}
@@ -167,13 +165,19 @@ export default function VerifyPage() {
             </div>
             <div style={styles.contractChecksInline}>
               {state.contract.checks.map(c => (
-                <span key={c.id} style={{
-                  color: c.status === 'pass' ? '#555' : c.status === 'fail' ? '#ef4444' : '#eab308',
-                  fontSize: '0.8rem',
-                }}>
-                  {c.status === 'pass' ? '✓' : c.status === 'fail' ? '✗' : '◌'}{' '}
+                <div key={c.id} style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', fontSize: '0.8rem' }}>
+                  <span style={{
+                    color: c.status === 'pass' ? '#555' : c.status === 'fail' ? '#ef4444' : '#eab308',
+                  }}>
+                    {c.status === 'pass' ? '✓' : c.status === 'fail' ? '✗' : '◌'}
+                  </span>
                   <span style={{ color: '#888' }}>{c.label}</span>
-                </span>
+                  {c.detail && (
+                    c.detailLink
+                      ? <a href={c.detailLink} target="_blank" rel="noopener" style={{ color: '#666', fontSize: '0.75rem', textDecoration: 'none' }}>— {c.detail} ↗</a>
+                      : <span style={{ color: '#555', fontSize: '0.75rem' }}>— {c.detail}</span>
+                  )}
+                </div>
               ))}
             </div>
           </div>
@@ -397,13 +401,24 @@ function RecordDetail({ record }: { record: RecordData }) {
         {record.checks.map(c => (
           <div key={c.id} style={styles.zkCheckCell}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>
-                <code style={{ color: '#555', fontSize: '0.75rem', marginRight: '0.4rem' }}>[{c.id}]</code>
-                <span style={{ fontSize: '0.85rem' }}>{c.label}</span>
-              </span>
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: '0.15rem' }}>
+                <span>
+                  <code style={{ color: '#555', fontSize: '0.75rem', marginRight: '0.4rem' }}>[{c.id}]</code>
+                  <span style={{ fontSize: '0.85rem' }}>{c.label}</span>
+                </span>
+                {c.detail && (
+                  c.detailLink
+                    ? <a href={c.detailLink} target="_blank" rel="noopener" style={{ color: '#666', fontSize: '0.75rem', paddingLeft: '2rem', textDecoration: 'none' }}>
+                        {c.detail} ↗
+                      </a>
+                    : <span style={{ color: '#666', fontSize: '0.75rem', paddingLeft: '2rem' }}>
+                        {c.detail}
+                      </span>
+                )}
+              </div>
               <span style={{
                 color: c.status === 'pass' ? '#22c55e' : '#ef4444',
-                fontWeight: 600,
+                fontWeight: 600, flexShrink: 0,
               }}>
                 {c.status === 'pass' ? '✓' : '✗'}
               </span>
@@ -456,6 +471,12 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: '0.75rem', padding: '0.6rem 1rem',
     background: '#111', border: '1px solid #222', borderRadius: '8px',
     fontSize: '0.85rem', color: '#888',
+  },
+  startButton: {
+    marginTop: '1.25rem', padding: '0.75rem 2rem',
+    background: '#22c55e', color: '#000', border: 'none',
+    borderRadius: '8px', fontSize: '1rem', fontWeight: 700,
+    cursor: 'pointer', letterSpacing: '0.02em',
   },
 
   // Result Banner
