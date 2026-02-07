@@ -64,7 +64,7 @@ async function main() {
   const ethBalance = Number(balance) / 1e18;
   console.log('   Balance:', ethBalance.toFixed(6), 'ETH');
   
-  if (balance === 0n) {
+  if (balance === BigInt(0)) {
     console.log('\n❌ No ETH balance. Get testnet ETH from:');
     console.log('   https://www.coinbase.com/faucets/base-ethereum-goerli-faucet');
     console.log('   https://www.alchemy.com/faucets/base-sepolia');

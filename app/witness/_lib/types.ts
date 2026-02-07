@@ -25,6 +25,7 @@ export interface WitnessRecord {
   onChain?: {
     txHash: string;
     blockNumber: number;
+    contractAddress?: string;
     submittedAt: string;
   };
   

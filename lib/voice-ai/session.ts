@@ -9,6 +9,7 @@ import { TextToSpeech } from './text-to-speech';
 import { GeminiChat, CallDecision } from './gemini';
 import { mulawToLinear16 } from './audio-utils';
 import { sendVoiceAINotification } from './email-notify';
+import { createWitness, hashPhoneNumber } from '@/app/witness/_lib/vlayer-client';
 
 export interface SessionConfig {
   callSid: string;
@@ -468,6 +469,21 @@ export class VoiceAISession {
       console.log(`[Session ${this.config.callSid}] Email notification sent (${this.decision}) with summary`);
     } catch (error) {
       console.error(`[Session ${this.config.callSid}] Failed to send email:`, error);
+    }
+
+    // Create on-chain witness proof (fire-and-forget — never blocks the call)
+    try {
+      const witnessRecord = await createWitness(this.config.callSid, {
+        callId: this.config.callSid,
+        timestamp: new Date().toISOString(),
+        callerHash: hashPhoneNumber(this.config.from),
+        action: this.decision!,
+        reason: summary,
+        confidence: 0.9,
+      });
+      console.log(`[Session ${this.config.callSid}] ⛓️ Witness created: ${witnessRecord.id}`);
+    } catch (error) {
+      console.error(`[Session ${this.config.callSid}] ⛓️ Witness creation failed:`, error);
     }
 
     // Set flag to end call after AI finishes speaking (not immediately)

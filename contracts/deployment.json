@@ -1,0 +1,10 @@
+{
+  "network": "base-sepolia",
+  "chainId": 84532,
+  "contractAddress": "0xe454ca755219310b2728d39db8039cbaa7abc3b8",
+  "deployer": "0x485A974140923524a74B0D72aF117852F31B412D",
+  "txHash": "0xac861bd07b87a7822477baed5d520dda474be8b68c7acbef3a18341da8584491",
+  "blockNumber": 37327227,
+  "guestId": "0x6e251f4d993427d02a4199e1201f3b54462365d7c672a51be57f776d509b47eb",
+  "deployedAt": "2026-02-07T00:05:41.067Z"
+}

@@ -9,7 +9,12 @@
  */
 
 import { mnemonicToAccount, privateKeyToAccount, HDAccount } from 'viem/accounts';
+import { config } from 'dotenv';
+import { resolve } from 'path';
 import type { Account } from 'viem';
+
+// .env.local を明示的にロード（Next.js プロジェクトなので .env.local が本体）
+config({ path: resolve(__dirname, '../../.env.local') });
 
 export function getDeployerAccount(): Account {
   const mnemonic = process.env.DEPLOYER_MNEMONIC;

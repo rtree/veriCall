@@ -22,12 +22,18 @@ export const vlayerConfig = {
   webProverUrl: process.env.VLAYER_WEB_PROVER_URL || 'https://web-prover.vlayer.xyz',
   zkProverUrl: process.env.VLAYER_ZK_PROVER_URL || 'https://zk-prover.vlayer.xyz',
   apiKey: process.env.VLAYER_API_KEY || '',
+  clientId: process.env.VLAYER_CLIENT_ID || '',
 };
 
 // Blockchain Configuration
 export const chainConfig = {
   rpcUrl: process.env.ETHEREUM_RPC_URL || 'https://sepolia.base.org',
   chainId: parseInt(process.env.CHAIN_ID || '84532', 10),
+};
+
+// VeriCallRegistry Contract (Base Sepolia)
+export const contractConfig = {
+  address: process.env.VERICALL_CONTRACT_ADDRESS || '0xe454ca755219310b2728d39db8039cbaa7abc3b8',
 };
 
 // Server Configuration
