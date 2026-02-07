@@ -37,19 +37,14 @@ export interface DemoEvent {
 
 // ─── Singleton ────────────────────────────────────────────────
 
-class DemoEventBus extends EventEmitter {
-  private static instance: DemoEventBus;
+// Use globalThis to ensure a SINGLE instance across Next.js module boundaries
+// (custom server vs API routes may load separate module instances)
+const GLOBAL_KEY = '__vericall_demo_bus__' as const;
 
-  private constructor() {
+class DemoEventBus extends EventEmitter {
+  constructor() {
     super();
     this.setMaxListeners(50); // SSE clients
-  }
-
-  static getInstance(): DemoEventBus {
-    if (!DemoEventBus.instance) {
-      DemoEventBus.instance = new DemoEventBus();
-    }
-    return DemoEventBus.instance;
   }
 
   /** Emit a structured demo event */
@@ -64,5 +59,13 @@ class DemoEventBus extends EventEmitter {
   }
 }
 
+function getGlobalBus(): DemoEventBus {
+  const g = globalThis as Record<string, unknown>;
+  if (!g[GLOBAL_KEY]) {
+    g[GLOBAL_KEY] = new DemoEventBus();
+  }
+  return g[GLOBAL_KEY] as DemoEventBus;
+}
+
 /** Global event bus — import this everywhere */
-export const demoBus = DemoEventBus.getInstance();
+export const demoBus = getGlobalBus();

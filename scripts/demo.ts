@@ -6,8 +6,10 @@
  * in real time with colored output and animations.
  *
  * Usage:
- *   npx tsx scripts/demo.ts              # connect to localhost:3000
- *   npx tsx scripts/demo.ts --url https://vericall-kkz6k4jema-uc.a.run.app
+ *   npx tsx scripts/demo.ts              # connect to Cloud Run (default)
+ *   npx tsx scripts/demo.ts --local      # connect to localhost:3000
+ *   npx tsx scripts/demo.ts --token XXX  # override token
+ *   Token is read from .env.local (VERICALL_DEMO_TOKEN) automatically.
  *
  * Flow:
  *   1. 🔄 Waiting for call… (spinner animation)
@@ -16,6 +18,24 @@
  *   4. 🔐 WebProof → ZK Proof → ⛓️  On-Chain TX
  *   5. → back to waiting
  */
+
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
+
+// ─── Load .env.local (same as Next.js) ───────────────────────
+try {
+  const envPath = resolve(__dirname, '..', '.env.local');
+  const envContent = readFileSync(envPath, 'utf-8');
+  for (const line of envContent.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const val = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, '');
+    if (!process.env[key]) process.env[key] = val;
+  }
+} catch { /* .env.local not found — ok */ }
 
 // ─── CLI args ─────────────────────────────────────────────────
 
