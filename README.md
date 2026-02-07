@@ -1,6 +1,6 @@
 # VeriCall
 
-<p align="center">
+<p align="left">
   <a href="https://vericall-kkz6k4jema-uc.a.run.app/demo">
     <img src="https://img.shields.io/badge/▶_LIVE_DEMO-Watch_the_Pipeline-06b6d4?style=for-the-badge" alt="Live Demo" />
   </a>
