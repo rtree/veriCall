@@ -608,15 +608,13 @@ vlayer offers two integration paths:
 
 **VeriCall uses the REST API approach.** Here's why:
 
-1. **vlayer alpha constraints**: vlayer v0.1.0-alpha.12 is in active development. The Solidity Prover SDK has dependencies on specific forge plugin versions, Nix toolchain, and a bespoke build pipeline that can break between versions. The REST API provides a stable, version-agnostic integration point.
+1. **This is the native interface for Web Proofs**: vlayer's Web Proof pipeline is fundamentally an HTTP attestation service — the prover fetches an HTTPS URL via TLSNotary, and the REST API (`/api/v1/prove`) is the direct interface for this. The Solidity Prover/Verifier SDK wraps this flow in a contract abstraction designed for on-chain data verification use cases, which adds indirection without benefit for HTTP endpoint attestation. VeriCall proves HTTP API responses — the REST API is the architecturally correct choice.
 
-2. **Architectural fit**: VeriCall's proof pipeline runs server-side (Cloud Run → vlayer → Base Sepolia), not from a client wallet. The REST API maps naturally to this server-driven flow. A Solidity Prover/Verifier pair would require the proof-triggering entity to be an EOA calling the Verifier contract, adding unnecessary complexity.
+2. **Greater control over verification logic**: By writing `VeriCallRegistryV3.sol` directly against `IRiscZeroVerifier`, we implement 14 on-chain checks including journal-bound decision integrity, URL prefix validation, notary fingerprint checks, queriesHash validation, and systemPromptHash/transcriptHash presence — none of which are available in vlayer's auto-generated Verifier contract. This level of verification would require forking the generated contract anyway.
 
-3. **Greater control over verification logic**: By writing `VeriCallRegistryV3.sol` directly against `IRiscZeroVerifier`, we implement journal-bound decision integrity, URL prefix validation, notary fingerprint checks, and queriesHash validation — none of which are available out-of-the-box in vlayer's auto-generated Verifier contract.
+3. **Server-driven architecture**: VeriCall's proof pipeline runs server-side (Cloud Run → vlayer → Base Sepolia), not from a client wallet. The REST API maps naturally to this flow. A Solidity Prover/Verifier pair assumes the proof-triggering entity is an EOA calling the Verifier contract, adding unnecessary complexity for a server-driven pipeline.
 
-4. **Industry precedent**: All four vlayer-track winners at ETHGlobal Buenos Aires 2025 (PayPunk, Cred-Fi, Redfish, zkx402) used the REST API approach, not the Solidity Prover/Verifier SDK. This is the de facto standard for vlayer integrations during the alpha period.
-
-> **Migration path**: When vlayer's Solidity SDK stabilizes, migrating is straightforward — the core proof data (WebProof → ZK Proof → journal) is identical regardless of the integration method. The change would be in how the contract calls `verify()`, not in the proof itself.
+> **Future improvement**: The Solidity Prover/Verifier SDK could simplify deployment if vlayer adds support for **custom journal validation hooks** in the generated Verifier contract (currently the Verifier only replays the proof, not validate journal semantics). When `forge-vlayer` stabilizes and the generated Verifier supports injection of custom validation logic, migrating is straightforward — the core proof data (WebProof → ZK Proof → journal) is identical regardless of the integration method.
 
 ### 3.9 Verifier Honesty: MockVerifier vs Production
 
@@ -666,16 +664,16 @@ Production:      VeriCallRegistryV3(RiscZeroVerifierRouter(0x0b144e...), ...)
 - All 14 checks continue to work identically — only check #1 becomes cryptographically binding
 - Past MockVerifier records remain on the old contract; new production records go to the new contract
 
-#### Why This is Standard Practice
+#### Why MockVerifier is the Correct Development Pattern
 
-The MockVerifier pattern is used by every RISC Zero-based dApp during development:
+The MockVerifier is the standard RISC Zero development workflow, documented in their official templates:
 
-- **vlayer's own examples** use `SELECTOR_FAKE = 0xFFFFFFFF` in their test suites
-- **RISC Zero's bonsai-foundry-template** ships with a MockVerifier by default
-- **All 4 vlayer winners at ETHGlobal Buenos Aires 2025** (PayPunk, Cred-Fi, Redfish, zkx402) used MockVerifier or equivalent mock approaches
-- It is the documented development pattern in RISC Zero's official documentation
+- **RISC Zero's [`risc0-foundry-template`](https://github.com/risc0/risc0-foundry-template)** ships with MockVerifier by default and documents it as the standard local/testnet deployment pattern
+- **vlayer's own test suites** use `SELECTOR_FAKE = 0xFFFFFFFF` throughout their SDK examples
 
-> **Bottom line**: VeriCall's on-chain verification is real — 14 checks, journal binding, immutable constants. The MockVerifier means the Groth16 pairing check is deferred to production. This is honest, standard, and the upgrade path is a single constructor argument change.
+VeriCall's contract is **already production-ready by design** — the `verifier` is an `IRiscZeroVerifier` interface injected via constructor. The 13 real on-chain checks (journal integrity, notary validation, URL binding, decision matching, hash presence) are identical whether the verifier is Mock or Groth16. No contract code changes are needed for the upgrade.
+
+> **Future improvement**: Production Groth16 verification activates when vlayer's ZK Prover transitions from development mode (`SELECTOR_FAKE = 0xFFFFFFFF`, 36-byte seals) to production mode (real RISC Zero Groth16 seals, ~256 bytes). This is controlled by vlayer's prover infrastructure — when they enable production proving, VeriCall upgrades by deploying a new V3 instance pointing to RISC Zero's `RiscZeroVerifierRouter`. The 13 existing checks continue unchanged; only check #1 gains full cryptographic binding.
 
 ---
 
