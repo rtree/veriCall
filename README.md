@@ -5,9 +5,9 @@
     <img src="https://img.shields.io/badge/▶_LIVE_DEMO-Watch_the_Pipeline-06b6d4?style=for-the-badge" alt="Live Demo" />
   </a>
 </p>
-https://vericall-kkz6k4jema-uc.a.run.app/demo
 
 **Verifiable AI Call Screening — Proving Fairness On-Chain**
+https://vericall-kkz6k4jema-uc.a.run.app/demo
 
 <img width="1764" height="1039" alt="image" src="https://github.com/user-attachments/assets/46d9b0ca-4f05-4421-b9ff-fdf643d71228" />
 
