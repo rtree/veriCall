@@ -4,7 +4,7 @@
  * Vlayer APIの基本的な疎通確認
  * 公式テスト用クレデンシャルを使用してAPIに接続
  * 
- * 実行: pnpm play playground/vlayer/01-hello-vlayer.ts
+ * 実行: pnpm play docs/playground/vlayer/01-hello-vlayer.ts
  */
 
 import 'dotenv/config';

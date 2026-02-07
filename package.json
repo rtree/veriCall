@@ -10,8 +10,8 @@
     "start": "node server.js",
     "lint": "next lint",
     "play": "ts-node --esm",
-    "play:vlayer": "ts-node --esm playground/vlayer/01-hello-vlayer.ts",
-    "play:twilio": "ts-node --esm playground/twilio/test-call.ts"
+    "play:vlayer": "ts-node --esm docs/playground/vlayer/01-hello-vlayer.ts",
+    "play:twilio": "ts-node --esm docs/playground/twilio/test-call.ts"
   },
   "dependencies": {
     "@google-cloud/aiplatform": "^6.2.0",

@@ -3,7 +3,7 @@
  * 
  * 発信テスト用スクリプト
  * 
- * 実行: npx ts-node playground/twilio/test-call.ts
+ * 実行: npx ts-node docs/playground/twilio/test-call.ts
  */
 
 import 'dotenv/config';

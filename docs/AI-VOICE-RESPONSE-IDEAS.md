@@ -1,5 +1,10 @@
 # VeriCall AI音声応答 - アイデア
 
+> **Historical document.** Early design ideas that shaped the current implementation.
+> The actual system uses English (not Japanese), Gemini 2.5 Flash (not Wavenet),
+> and VeriCallRegistryV3 with 9-field ZK journal (not the simple CallDecisionLog proposed here).
+> See [DESIGN.md](../DESIGN.md) for the production architecture.
+
 ## コンセプト
 
 **AIが「門番」として営業電話をフィルタリング**

@@ -1,5 +1,8 @@
 # Vlayer 実験メモ (2026-02-01)
 
+> **Historical document.** These experiments led to the current VeriCall implementation.
+> All items in "次のステップ" have been completed — see [DESIGN.md](../DESIGN.md) §2.3 for the production pipeline.
+
 ## 概要
 
 VeriCallでVlayerを使って電話の転送判断をオンチェーンに記録する実験。
@@ -38,7 +41,7 @@ curl -X POST https://web-prover.vlayer.xyz/api/v1/prove \
 ### 1. 接続テスト (01-hello-vlayer.ts)
 
 ```bash
-pnpm play playground/vlayer/01-hello-vlayer.ts
+pnpm play docs/playground/vlayer/01-hello-vlayer.ts
 ```
 
 ✅ **成功**
@@ -51,7 +54,7 @@ pnpm play playground/vlayer/01-hello-vlayer.ts
 ### 2. Web Proof 生成 (02-web-proof.ts)
 
 ```bash
-pnpm play playground/vlayer/02-web-proof.ts
+pnpm play docs/playground/vlayer/02-web-proof.ts
 ```
 
 ✅ **成功**
@@ -67,7 +70,7 @@ pnpm play playground/vlayer/02-web-proof.ts
 ### 3. ZK Proof 圧縮 (03-zk-proof.ts)
 
 ```bash
-pnpm play playground/vlayer/03-zk-proof.ts
+pnpm play docs/playground/vlayer/03-zk-proof.ts
 ```
 
 ✅ **成功**
@@ -138,11 +141,11 @@ pnpm play playground/vlayer/03-zk-proof.ts
 
 ## 次のステップ
 
-- [ ] Twilio開通待ち
-- [ ] VeriCall `/api/decision/:callId` エンドポイント実装
-- [ ] Cloud Runデプロイ（HTTPSが必要）
-- [ ] 本番用Vlayer APIキー取得（要チーム連絡）
-- [ ] Base Sepolia Verifierコントラクト作成
+- [x] Twilio開通待ち → ✅ Done (Twilio Programmable Voice)
+- [x] VeriCall `/api/decision/:callId` エンドポイント実装 → ✅ `GET /api/witness/decision/:callSid`
+- [x] Cloud Runデプロイ（HTTPSが必要） → ✅ `vericall-kkz6k4jema-uc.a.run.app`
+- [x] 本番用Vlayer APIキー取得（要チーム連絡） → ✅ Using limited public credentials
+- [x] Base Sepolia Verifierコントラクト作成 → ✅ `VeriCallRegistryV3` at `0x4395cf02b8d343aae958bda7ac6ed71fbd4abd48`
 
 ## 参考リンク
 

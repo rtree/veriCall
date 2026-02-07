@@ -37,7 +37,11 @@ yarn-error.log*
 next-env.d.ts
 
 # Playground output
-playground/output/
+docs/playground/output/
+
+# Foundry build cache
+cache/
+
 playground/*.log
 scripts/setup-gcp-workload-identity.sh
 DEPLOYER_PRIVATE_KEY

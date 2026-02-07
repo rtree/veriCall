@@ -3,7 +3,7 @@
  * 
  * Vlayer Web Prover ServerでWeb Proofを生成し、内容を検証する
  * 
- * 実行: pnpm play playground/vlayer/02-web-proof.ts
+ * 実行: pnpm play docs/playground/vlayer/02-web-proof.ts
  */
 
 import 'dotenv/config';

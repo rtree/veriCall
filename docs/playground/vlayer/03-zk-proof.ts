@@ -4,7 +4,7 @@
  * Web ProofをZK Proofに圧縮し、オンチェーン検証可能な形式に変換
  * 
  * 前提: 02-web-proof.ts を実行して /tmp/web-proof.json を生成済み
- * 実行: pnpm play playground/vlayer/03-zk-proof.ts
+ * 実行: pnpm play docs/playground/vlayer/03-zk-proof.ts
  */
 
 import 'dotenv/config';

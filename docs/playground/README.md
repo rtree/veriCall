@@ -6,13 +6,13 @@ Vlayer実験用のスクリプト群。本番コードとは独立。
 
 ```bash
 # 依存インストール後
-npx ts-node playground/vlayer/01-hello-vlayer.ts
+npx ts-node docs/playground/vlayer/01-hello-vlayer.ts
 ```
 
 ## ファイル構成
 
 ```
-playground/
+docs/playground/
 ├── vlayer/
 │   ├── 01-hello-vlayer.ts    # 基本的なAPI呼び出し
 │   ├── 02-web-proof.ts       # Web Proof生成

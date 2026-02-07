@@ -1,109 +1,113 @@
 # VeriCall Deployment Guide
 
-## 環境変数の管理
+## Environment Variables
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  .env.example  ← 必要な変数の定義（値なし、コミット可）     │
+│  .env.example  ← all required variable names (no values)    │
 └─────────────────────────────────────────────────────────────┘
                               │
             ┌─────────────────┴─────────────────┐
             ▼                                   ▼
     ┌──────────────────┐              ┌──────────────────┐
-    │ Local/Playground │              │    Production    │
+    │  Local / Dev     │              │    Production    │
     ├──────────────────┤              ├──────────────────┤
     │   .env.local     │              │  GitHub Secrets  │
-    │   (手動作成)     │              │       ↓          │
+    │   (manual)       │              │       ↓          │
     │                  │              │  GCP Secret Mgr  │
     │                  │              │       ↓          │
     │                  │              │    Cloud Run     │
     └──────────────────┘              └──────────────────┘
 ```
 
-## ローカル / Playground
+## Local Development
 
 ```bash
-# 1. .env.local を作成
-cp .env.example .env.local
-
-# 2. 値を設定
-vim .env.local
-
-# 3. 起動
-npm run dev
-
-# 4. Playground
-npx ts-node playground/vlayer/01-hello-vlayer.ts
+pnpm install
+cp .env.example .env.local    # fill in your credentials
+pnpm dev                       # Next.js + WebSocket on localhost:3000
 ```
 
-## 本番デプロイ
-
-### 1. GCP 準備
+Playground scripts (vlayer / Twilio experiments):
 
 ```bash
-# Artifact Registry を作成（初回のみ）
+npx tsx docs/playground/vlayer/01-hello-vlayer.ts
+npx tsx docs/playground/twilio/test-call.ts
+```
+
+## Production Deploy
+
+### 1. GCP Setup (first time only)
+
+```bash
+# Artifact Registry
 gcloud artifacts repositories create vericall \
   --repository-format=docker \
   --location=us-central1 \
   --project=ethglobal-479011
 
-# Cloud Run 用サービスアカウントに Secret Manager アクセス権を付与
+# Grant Secret Manager access to Cloud Run service account
 gcloud projects add-iam-policy-binding ethglobal-479011 \
-  --member="serviceAccount:YOUR_SERVICE_ACCOUNT@ethglobal-479011.iam.gserviceaccount.com" \
+  --member="serviceAccount:SA@ethglobal-479011.iam.gserviceaccount.com" \
   --role="roles/secretmanager.secretAccessor"
 ```
 
-### 2. GitHub Secrets 設定
+### 2. GitHub Secrets
 
-GitHub リポジトリ → Settings → Secrets and variables → Actions
+Repository → Settings → Secrets and variables → Actions
 
-| Secret Name | 説明 |
-|-------------|------|
-| `GCP_SA_KEY` | GCPサービスアカウントのJSON鍵 |
+| Secret Name | Description |
+|-------------|-------------|
+| `GCP_SA_KEY` | GCP service account JSON key |
 | `TWILIO_ACCOUNT_SID` | Twilio Account SID |
 | `TWILIO_AUTH_TOKEN` | Twilio Auth Token |
-| `TWILIO_PHONE_NUMBER` | Twilio電話番号 (+1...) |
-| `DESTINATION_PHONE_NUMBER` | 転送先番号 |
-| `FORWARD_TIMEOUT` | 転送タイムアウト秒 (例: 30) |
-| `WHITELIST_NUMBERS` | 許可番号リスト (カンマ区切り) |
-| `VLAYER_API_KEY` | Vlayer API Key |
-| `VLAYER_WEB_PROVER_URL` | Web Prover URL |
-| `VLAYER_ZK_PROVER_URL` | ZK Prover URL |
+| `TWILIO_PHONE_NUMBER` | Twilio phone number (+1...) |
+| `DESTINATION_PHONE_NUMBER` | Call forwarding target |
+| `FORWARD_TIMEOUT` | Forward timeout seconds (e.g. 30) |
+| `WHITELIST_NUMBERS` | Allowed numbers (comma-separated) |
+| `VLAYER_CLIENT_ID` | vlayer Client ID |
+| `VLAYER_API_KEY` | vlayer API Key |
+| `VLAYER_WEB_PROVER_URL` | `https://web-prover.vlayer.xyz` |
+| `VLAYER_ZK_PROVER_URL` | `https://zk-prover.vlayer.xyz` |
+| `SENDGRID_API_KEY` | SendGrid API key |
+| `NOTIFICATION_EMAIL` | Email notification recipient |
+| `FROM_EMAIL` | Sender address for notifications |
 | `NEXT_PUBLIC_BASE_URL` | Cloud Run URL |
 
-### 3. デプロイ
+### 3. Deploy
 
 ```bash
-git push origin main
-# → GitHub Actions が自動でデプロイ
+git push origin master
+# → GitHub Actions auto-deploys to Cloud Run
 ```
 
-### 4. Twilio Webhook 設定
+### 4. Twilio Webhook
 
-1. Twilio Console → Phone Numbers
-2. 電話番号を選択
-3. Voice Configuration:
-   - Webhook URL: `https://vericall-ded916a01840-xxxxx.run.app/phone/incoming`
+1. Twilio Console → Phone Numbers → select number
+2. Voice Configuration:
+   - Webhook URL: `https://vericall-kkz6k4jema-uc.a.run.app/phone/incoming`
    - HTTP Method: POST
 
-## サービス名について
+## Service URLs
 
-総当たり攻撃対策のため、URLにランダム文字列を含めています:
+| Service | URL |
+|---------|-----|
+| Cloud Run | `https://vericall-kkz6k4jema-uc.a.run.app` |
+| Live Demo | `https://vericall-kkz6k4jema-uc.a.run.app/demo` |
+| Verification | `https://vericall-kkz6k4jema-uc.a.run.app/verify` |
+| Contract (Base Sepolia) | `0x4395cf02b8d343aae958bda7ac6ed71fbd4abd48` |
 
-- Service: `vericall-ded916a01840`
-- Secret: `vericall-env-caa4031fec2f`
-
-## 確認コマンド
+## Monitoring Commands
 
 ```bash
-# デプロイ状況
+# Service status
 gcloud run services list --project=ethglobal-479011
 
-# ログ確認
-gcloud run services logs read vericall-ded916a01840 \
+# Logs
+gcloud run services logs read vericall-kkz6k4jema \
   --region=us-central1 \
   --project=ethglobal-479011
 
-# Secret 確認
+# Secrets
 gcloud secrets list --project=ethglobal-479011
 ```

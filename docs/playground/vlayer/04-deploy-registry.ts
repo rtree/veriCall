@@ -7,7 +7,7 @@
  *   - .env.local に DEPLOYER_PRIVATE_KEY を設定済み
  *   - Base Sepolia ETH を保有 (faucet: https://www.coinbase.com/faucets/base-ethereum-goerli-faucet)
  * 
- * 実行: npx tsx playground/vlayer/04-deploy-registry.ts
+ * 実行: npx tsx docs/playground/vlayer/04-deploy-registry.ts
  */
 
 import 'dotenv/config';

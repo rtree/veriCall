@@ -10,7 +10,7 @@
  *   - 04-deploy-registry.ts でコントラクトデプロイ済み
  *   - contracts/deployment.json が存在
  * 
- * 実行: npx tsx playground/vlayer/05-end-to-end.ts
+ * 実行: npx tsx docs/playground/vlayer/05-end-to-end.ts
  */
 
 import 'dotenv/config';
