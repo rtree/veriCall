@@ -5,10 +5,13 @@
     <img src="https://img.shields.io/badge/▶_LIVE_DEMO-Watch_the_Pipeline-06b6d4?style=for-the-badge" alt="Live Demo" />
   </a>
 </p>
+https://vericall-kkz6k4jema-uc.a.run.app/demo
 
 **Verifiable AI Call Screening — Proving Fairness On-Chain**
 
 <img width="1764" height="1039" alt="image" src="https://github.com/user-attachments/assets/46d9b0ca-4f05-4421-b9ff-fdf643d71228" />
+
+<img width="1810" height="774" alt="image" src="https://github.com/user-attachments/assets/47026f4e-58e2-47b7-b505-8e490054e4e1" />
 
 
 ## The Problem
