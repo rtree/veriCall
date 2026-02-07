@@ -514,7 +514,9 @@ gcloud run deploy vericall \
   --allow-unauthenticated
 ```
 
-## Current Status
+## Status & Roadmap
+
+### Implemented
 
 | Feature | Status |
 |---------|--------|
@@ -523,26 +525,41 @@ gcloud run deploy vericall \
 | Email notifications (OK/SCAM templates) | ✅ Production |
 | AI-powered call summaries (Gemini) | ✅ Production |
 | Utterance buffering for speech quality | ✅ Production |
-| vlayer Web Proof generation | ✅ Implemented (REST API) |
-| vlayer ZK Proof compression | ✅ Implemented (REST API) |
+| vlayer Web Proof generation | ✅ [REST API](DESIGN.md#38-why-rest-api-not-solidity-proververifier) |
+| vlayer ZK Proof compression | ✅ [REST API](DESIGN.md#38-why-rest-api-not-solidity-proververifier) |
 | On-chain proof submission (Base Sepolia) | ✅ Implemented |
-| On-chain ZK verification (VeriCallRegistryV3) | ✅ Implemented (14 on-chain checks, 9-field journal) |
+| On-chain ZK verification (VeriCallRegistryV3) | ✅ [14 on-chain checks, 9-field journal](DESIGN.md#39-verifier-honesty-mockverifier-vs-production) |
 | systemPromptHash / transcriptHash in journal | ✅ Proven via JMESPath extraction |
+| Trust-minimized verification page (`/verify`) | ✅ 12 checks, client-side |
+| Trust-minimized verification CLI (`scripts/verify.ts`) | ✅ 14 checks, `--deep` mode |
+| Live demo — web (`/demo`) + CLI (`scripts/demo.ts`) | ✅ SSE real-time pipeline viewer |
+| Explorer API (`/api/explorer`) | ✅ On-chain records as JSON |
 | CLI registry inspector (V1/V3) | ✅ Implemented |
-| Explorer API (`/api/explorer`) | ✅ Implemented |
-| Single Source of Truth (deployment.json) | ✅ Implemented |
-| Trust-minimized verification page (`/verify`) | ✅ Implemented (12 checks, client-side) |
-| Trust-minimized verification CLI (`scripts/verify.ts`) | ✅ Implemented (14 checks, `--deep`) |
-| Live demo CLI with SSE streaming (`scripts/demo.ts`) | ✅ Implemented |
-| Live demo web page (`/demo`) | ✅ Implemented |
+| Single Source of Truth (`deployment.json`) | ✅ Implemented |
 | Cloud SQL decision persistence | ✅ Implemented |
-| Production Groth16 verification | 📋 Planned (awaiting vlayer production proofs) |
 
-### Verification Architecture Notes
+### Next: Upgrade Path
 
-**REST API integration**: VeriCall uses vlayer's REST API (`/api/v1/prove`, `/api/v0/compress-web-proof`) — the native interface for Web Proofs (HTTP attestation via TLSNotary). This is the architecturally optimal choice for proving HTTP API responses, and it allows us to write a custom verifier contract (`VeriCallRegistryV3`) with 14 on-chain checks that vlayer's auto-generated Verifier does not support. When vlayer's Solidity SDK adds custom journal validation hooks in the generated Verifier, migration is straightforward — the proof data is identical. See [DESIGN.md § 3.8](DESIGN.md) for details.
+These improvements are ready on VeriCall's side — activation depends on upstream milestones.
 
-**On-chain verification (13 of 14 checks real)**: Every `registerCallDecision()` runs 14 on-chain checks. Of these, 13 are fully real today — journal ABI decode, notary fingerprint validation, URL prefix binding, queriesHash validation, systemPromptHash/transcriptHash presence, and decision-journal keccak256 binding. The one deferred check is Groth16 cryptographic seal verification: the current `RiscZeroMockVerifier` validates seal format per [RISC Zero's standard development pattern](https://github.com/risc0/risc0-foundry-template). When vlayer's ZK Prover transitions to production mode (emitting real Groth16 seals), VeriCall upgrades by deploying a new contract instance with `RiscZeroVerifierRouter` in the constructor — no code changes, all 13 existing checks unchanged. See [DESIGN.md § 3.9](DESIGN.md) for the full 14-check breakdown.
+| Improvement | Condition | VeriCall Change Required |
+|-------------|-----------|--------------------------|
+| **Production Groth16 verification** | vlayer ZK Prover transitions from dev mode (`0xFFFFFFFF` seals) to production Groth16 | Deploy new V3 instance with `RiscZeroVerifierRouter` in constructor. No code changes — [13 existing checks unchanged](DESIGN.md#39-verifier-honesty-mockverifier-vs-production). |
+| **Solidity Prover/Verifier SDK** | vlayer SDK adds custom journal validation hooks in generated Verifier | Migrate from REST API to SDK. Proof data is identical — [only the integration layer changes](DESIGN.md#38-why-rest-api-not-solidity-proververifier). |
+
+### Future
+
+| Feature | Description |
+|---------|-------------|
+| Cross-chain verification | Verify VeriCall proofs on Sui or other chains |
+| Caller-initiated verification | Let callers trigger proof generation for their own calls |
+| Multi-tenant | Support multiple companies with independent rulesets and contracts |
+
+### Architecture Decisions
+
+**Why REST API?** VeriCall uses vlayer's REST API (`/api/v1/prove`, `/api/v0/compress-web-proof`) — the native interface for Web Proofs (HTTP attestation via TLSNotary). This is the architecturally optimal choice for proving HTTP API responses, and it enables a custom verifier contract (`VeriCallRegistryV3`) with 14 on-chain checks that vlayer's auto-generated Verifier does not support. → [Full rationale](DESIGN.md#38-why-rest-api-not-solidity-proververifier)
+
+**Why MockVerifier? (13 of 14 checks real)** Every `registerCallDecision()` runs 14 on-chain checks. 13 are fully real today — journal ABI decode, notary fingerprint, URL prefix binding, queriesHash, systemPromptHash/transcriptHash presence, decision-journal keccak256 binding. The one deferred check (Groth16 seal verification) follows [RISC Zero's standard development pattern](https://github.com/risc0/risc0-foundry-template). VeriCall's contract is already production-ready — the upgrade is a constructor argument swap. → [Full 14-check breakdown](DESIGN.md#39-verifier-honesty-mockverifier-vs-production)
 
 ## License
 
