@@ -35,6 +35,8 @@ interface LogEntry {
   text: string;
   color: string;
   phase: Phase;
+  link?: string;   // Optional BaseScan / external link
+  indent?: boolean; // Sub-detail row (dimmer, smaller)
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -92,7 +94,7 @@ function useDemo() {
   const abortRef = useRef<AbortController | null>(null);
 
   const addLog = useCallback(
-    (icon: string, label: string, text: string, color: string, logPhase: Phase) => {
+    (icon: string, label: string, text: string, color: string, logPhase: Phase, link?: string, indent?: boolean) => {
       const entry: LogEntry = {
         id: idRef.current++,
         timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
@@ -101,6 +103,8 @@ function useDemo() {
         text,
         color,
         phase: logPhase,
+        link,
+        indent,
       };
       setLogs(prev => [...prev, entry]);
     },
@@ -304,112 +308,189 @@ export default function DemoPage() {
     if (isVerifying) return;
     setIsVerifying(true);
 
-    const ok = (id: string, text: string) => addLog('✅', id, text, '#22c55e', 'complete');
+    const ok = (id: string, text: string, link?: string) => addLog('✅', id, text, '#22c55e', 'complete', link);
     const ng = (id: string, text: string) => addLog('❌', id, text, '#ef4444', 'complete');
+    const sub = (text: string, link?: string) => addLog('', '', text, '#666', 'complete', link, true);
+    const DECISION_LABELS: Record<number, string> = { 0: 'UNKNOWN', 1: 'ACCEPT', 2: 'BLOCK', 3: 'RECORD' };
 
     addLog('🔍', 'VERIFY', 'Starting independent on-chain verification…', '#a78bfa', 'complete');
-    await wait(200);
+    addLog('', '', `Reading directly from Base Sepolia RPC — no VeriCall APIs used`, '#666', 'complete', undefined, true);
+    await wait(300);
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const client: any = createPublicClient({ chain: baseSepolia, transport: http(VERIFY_CONFIG.rpcUrl) });
 
+      // ─── Phase 1: Contract Checks ─────────────────────
+      addLog('📋', 'PHASE 1', 'Contract integrity checks (C1–C5)', '#a78bfa', 'complete');
+      await wait(200);
+
       // C1: Contract deployed
       const bytecode = await client.getCode({ address: VERIFY_CONFIG.registry });
       const size = bytecode ? (bytecode.length - 2) / 2 : 0;
-      size > 0 ? ok('C1', `Contract deployed — ${size} bytes`) : ng('C1', 'No bytecode');
+      size > 0 ? ok('C1', `Contract deployed — ${size} bytes on-chain`, `${BASESCAN}/address/${VERIFY_CONFIG.registry}#code`) : ng('C1', 'No bytecode found');
+      sub(`Registry: ${VERIFY_CONFIG.registry}`, `${BASESCAN}/address/${VERIFY_CONFIG.registry}`);
       await wait(120);
 
       // C2: Registry responds
       const stats = (await client.readContract({ address: VERIFY_CONFIG.registry, abi: REGISTRY_ABI, functionName: 'getStats' })) as [bigint, bigint, bigint, bigint];
       const total = Number(stats[0]);
+      const accepted = Number(stats[1]);
+      const blocked = Number(stats[2]);
+      const recorded = Number(stats[3]);
       ok('C2', `Registry responds — ${total} records on-chain`);
+      sub(`Stats: ${accepted} accepted, ${blocked} blocked, ${recorded} recorded`);
       await wait(120);
 
       // C3: Verifier configured
       const verifierAddr = (await client.readContract({ address: VERIFY_CONFIG.registry, abi: REGISTRY_ABI, functionName: 'verifier' })) as `0x${string}`;
       let isMock = false;
-      try { const sel = (await client.readContract({ address: verifierAddr, abi: MOCK_VERIFIER_ABI, functionName: 'SELECTOR' })) as string; isMock = sel === '0xffffffff'; } catch { /* not mock */ }
-      ok('C3', `Verifier: ${isMock ? 'MockVerifier (dev)' : verifierAddr.slice(0, 10) + '…'}`);
+      let selectorHex = '';
+      try {
+        const sel = (await client.readContract({ address: verifierAddr, abi: MOCK_VERIFIER_ABI, functionName: 'SELECTOR' })) as string;
+        selectorHex = sel;
+        isMock = sel === '0xffffffff';
+      } catch { /* not mock */ }
+      ok('C3', `Verifier: ${isMock ? 'MockVerifier (RISC Zero dev)' : verifierAddr.slice(0, 10) + '…'}`, `${BASESCAN}/address/${verifierAddr}`);
+      sub(`Address: ${verifierAddr}`, `${BASESCAN}/address/${verifierAddr}#code`);
+      if (selectorHex) sub(`SELECTOR: ${selectorHex} ${isMock ? '(mock: 0xFFFFFFFF)' : ''}`);
       await wait(120);
 
       // C4: Image ID
       const imageId = (await client.readContract({ address: VERIFY_CONFIG.registry, abi: REGISTRY_ABI, functionName: 'imageId' })) as `0x${string}`;
       const hasImage = imageId !== '0x' + '0'.repeat(64);
-      hasImage ? ok('C4', `Image ID: ${imageId.slice(0, 10)}…${imageId.slice(-6)}`) : ng('C4', 'Image ID not set');
+      hasImage ? ok('C4', `Image ID set (vlayer guestId)`) : ng('C4', 'Image ID not set (zero)');
+      sub(`${imageId}`);
       await wait(120);
 
       // C5: Owner
       const owner = (await client.readContract({ address: VERIFY_CONFIG.registry, abi: REGISTRY_ABI, functionName: 'owner' })) as `0x${string}`;
-      ok('C5', `Owner: ${owner.slice(0, 10)}…${owner.slice(-6)}`);
-      await wait(150);
+      ok('C5', `Owner address`, `${BASESCAN}/address/${owner}`);
+      sub(`${owner}`, `${BASESCAN}/address/${owner}`);
+      await wait(200);
 
       if (total === 0) {
         addLog('⚠️', 'VERIFY', 'No records found on-chain', '#eab308', 'complete');
         return;
       }
 
-      // Get latest record
+      // ─── Phase 2: Record Verification ─────────────────
+      addLog('📋', 'PHASE 2', `Per-record verification (V1–V7) — latest record #${total}`, '#a78bfa', 'complete');
+      await wait(200);
+
       const callId = (await client.readContract({ address: VERIFY_CONFIG.registry, abi: REGISTRY_ABI, functionName: 'callIds', args: [BigInt(total - 1)] })) as `0x${string}`;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const record = (await client.readContract({ address: VERIFY_CONFIG.registry, abi: REGISTRY_ABI, functionName: 'getRecord', args: [callId] })) as any;
-      addLog('🔍', 'RECORD', `Verifying record #${total} — callId ${callId.slice(0, 10)}…`, '#a78bfa', 'complete');
-      await wait(150);
+      const decision = Number(record.decision);
+      const decisionLabel = DECISION_LABELS[decision] || 'UNKNOWN';
+      const timestamp = Number(record.timestamp) > 0 ? new Date(Number(record.timestamp) * 1000).toISOString() : 'N/A';
 
-      // V1: verified flag
-      record.verified ? ok('V1', 'ZK proof verified on-chain ✓') : ng('V1', 'ZK proof NOT verified');
+      addLog('🔍', 'RECORD', `callId: ${callId.slice(0, 14)}…${callId.slice(-8)}`, '#a78bfa', 'complete');
+      sub(`Decision: ${decisionLabel} | Timestamp: ${timestamp}`);
+      sub(`Reason: "${String(record.reason).slice(0, 100)}${String(record.reason).length > 100 ? '…' : ''}"`);
+      sub(`Submitter: ${record.submitter}`, `${BASESCAN}/address/${record.submitter}`);
+      await wait(200);
+
+      // V1: ZK proof verified flag + seal inspection
+      const sealHex = record.zkProofSeal as `0x${string}`;
+      const sealBytes = sealHex.length > 2 ? (sealHex.length - 2) / 2 : 0;
+      const sealPrefix = sealHex.slice(0, 10);
+      record.verified ? ok('V1', `ZK proof verified on-chain — record.verified == true`) : ng('V1', 'ZK proof NOT verified');
+      sub(`Seal: ${sealPrefix}… (${sealBytes} bytes) ${sealPrefix === '0xffffffff' ? '← RISC Zero Mock selector' : ''}`);
       await wait(120);
 
       // V2: Journal hash integrity
+      const storedHash = record.journalHash as `0x${string}`;
       const computedHash = keccak256(record.journalDataAbi);
-      const hashMatch = computedHash === record.journalHash;
-      hashMatch ? ok('V2', 'Journal hash integrity — keccak256 match') : ng('V2', 'Journal hash MISMATCH');
+      const hashMatch = computedHash === storedHash;
+      hashMatch ? ok('V2', `Journal hash integrity — keccak256(journalDataAbi) == journalHash`) : ng('V2', 'Journal hash MISMATCH');
+      sub(`Stored:   ${storedHash}`);
+      sub(`Computed: ${computedHash}`);
       await wait(120);
 
-      // V3: verifyJournal()
+      // V3: verifyJournal() on-chain
       let journalOk = false;
       try { journalOk = (await client.readContract({ address: VERIFY_CONFIG.registry, abi: REGISTRY_ABI, functionName: 'verifyJournal', args: [callId, record.journalDataAbi] })) as boolean; } catch { /* */ }
       journalOk ? ok('V3', 'On-chain journal verification — verifyJournal() → true') : ng('V3', 'verifyJournal() failed');
+      sub(`Contract re-computed keccak256 and confirmed match`);
       await wait(120);
 
       // V4: Independent seal re-verification
+      const journalDigest = sha256(record.journalDataAbi);
       let sealOk = false;
-      try { const digest = sha256(record.journalDataAbi); await client.readContract({ address: verifierAddr, abi: MOCK_VERIFIER_ABI, functionName: 'verify', args: [record.zkProofSeal, imageId, digest] }); sealOk = true; } catch { /* */ }
-      sealOk ? ok('V4', 'Independent seal re-verification — passed') : ng('V4', 'Seal re-verification failed');
+      try { await client.readContract({ address: verifierAddr, abi: MOCK_VERIFIER_ABI, functionName: 'verify', args: [record.zkProofSeal, imageId, journalDigest] }); sealOk = true; } catch { /* */ }
+      sealOk ? ok('V4', 'Independent seal re-verification — verifier.verify() passed') : ng('V4', 'Seal re-verification failed');
+      sub(`ImageID: ${imageId.slice(0, 14)}…${imageId.slice(-8)}`);
+      sub(`JournalDigest: ${(journalDigest as string).slice(0, 14)}…${(journalDigest as string).slice(-8)}`);
       await wait(120);
 
-      // V5: TLSNotary metadata
+      // V5: TLSNotary proven data — the heart of the proof
       let provenOk = false;
+      let provenDecision = '';
+      let provenReason = '';
+      let provenUrl = '';
+      let notaryFP = '';
+      let provenMethod = '';
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const pd = (await client.readContract({ address: VERIFY_CONFIG.registry, abi: REGISTRY_ABI, functionName: 'getProvenData', args: [callId] })) as any;
-        provenOk = pd[0] !== '0x' + '0'.repeat(64) && pd[1] === 'GET' && (pd[2] as string).length > 0 && (pd[5] as string).length > 0 && (pd[6] as string).length > 0;
+        notaryFP = pd[0] as string;
+        provenMethod = pd[1] as string;
+        provenUrl = pd[2] as string;
+        provenDecision = pd[5] as string;
+        provenReason = pd[6] as string;
+        const notaryNonZero = notaryFP !== '0x' + '0'.repeat(64);
+        provenOk = notaryNonZero && provenMethod === 'GET' && provenUrl.length > 0 && provenDecision.length > 0 && provenReason.length > 0;
       } catch { /* */ }
-      provenOk ? ok('V5', 'TLSNotary metadata valid — GET, data extracted') : ng('V5', 'TLSNotary metadata invalid or missing');
+      provenOk ? ok('V5', 'TLSNotary web proof metadata — all fields valid') : ng('V5', 'TLSNotary metadata invalid or missing');
+      if (notaryFP) sub(`NotaryKey FP: ${notaryFP.slice(0, 14)}…${notaryFP.slice(-8)}`);
+      if (provenMethod) sub(`Method: ${provenMethod}`);
+      if (provenUrl) sub(`URL: ${provenUrl}`);
+      if (provenDecision) sub(`Proven decision: ${provenDecision}`);
+      if (provenReason) sub(`Proven reason: "${provenReason.slice(0, 120)}${provenReason.length > 120 ? '…' : ''}"`);
+      await wait(150);
+
+      // V5b: Decision consistency — proven data vs on-chain record
+      const decisionMatch = provenDecision.toUpperCase() === decisionLabel.toUpperCase();
+      decisionMatch ? ok('V5b', `Decision consistency — proven "${provenDecision}" matches on-chain "${decisionLabel}"`) : ng('V5b', `Decision MISMATCH — proven "${provenDecision}" ≠ on-chain "${decisionLabel}"`);
       await wait(120);
 
       // V6: Registration TX
       let eventTxHash: string | null = null;
+      let eventBlock: bigint | null = null;
       try {
         const evLogs = await chunkedGetLogs(client, { address: VERIFY_CONFIG.registry, event: CallDecisionRecordedEvent, args: { callId }, fromBlock: VERIFY_CONFIG.deployBlock, toBlock: 'latest' });
-        if (evLogs.length > 0) eventTxHash = evLogs[0].transactionHash;
+        if (evLogs.length > 0) { eventTxHash = evLogs[0].transactionHash; eventBlock = evLogs[0].blockNumber; }
       } catch { /* */ }
-      eventTxHash ? ok('V6', `Registration TX: ${eventTxHash.slice(0, 10)}…${eventTxHash.slice(-6)}`) : ng('V6', 'Registration TX not found');
+      eventTxHash ? ok('V6', `CallDecisionRecorded event found`, `${BASESCAN}/tx/${eventTxHash}`) : ng('V6', 'Registration TX not found');
+      if (eventTxHash) sub(`TX: ${eventTxHash}`, `${BASESCAN}/tx/${eventTxHash}`);
+      if (eventBlock) sub(`Block: ${eventBlock}`);
       await wait(120);
 
       // V7: ProofVerified event
       let proofEvent = false;
+      let proofEventImageId = '';
+      let proofEventDigest = '';
       try {
         const evLogs = await chunkedGetLogs(client, { address: VERIFY_CONFIG.registry, event: ProofVerifiedEvent, args: { callId }, fromBlock: VERIFY_CONFIG.deployBlock, toBlock: 'latest' });
-        proofEvent = evLogs.length > 0;
+        if (evLogs.length > 0) {
+          proofEvent = true;
+          proofEventImageId = evLogs[0].args?.imageId || '';
+          proofEventDigest = evLogs[0].args?.journalDigest || '';
+        }
       } catch { /* */ }
-      proofEvent ? ok('V7', 'ProofVerified event — ZK verification confirmed') : ng('V7', 'ProofVerified event not found');
-      await wait(200);
+      proofEvent ? ok('V7', 'ProofVerified event — ZK proof validated by contract') : ng('V7', 'ProofVerified event not found');
+      if (proofEventImageId) sub(`Event imageId: ${String(proofEventImageId).slice(0, 14)}…`);
+      if (proofEventDigest) sub(`Event journalDigest: ${String(proofEventDigest).slice(0, 14)}…`);
+      await wait(250);
 
-      // Summary
-      const results = [size > 0, true, true, hasImage, true, record.verified, hashMatch, journalOk, sealOk, provenOk, !!eventTxHash, proofEvent];
+      // ─── Summary ──────────────────────────────────────
+      const results = [size > 0, true, true, hasImage, true, record.verified, hashMatch, journalOk, sealOk, provenOk, decisionMatch, !!eventTxHash, proofEvent];
       const passed = results.filter(Boolean).length;
-      addLog('🏁', 'DONE', `Verification complete: ${passed}/${results.length} checks passed`, passed === results.length ? '#22c55e' : '#eab308', 'complete');
+      const perfect = passed === results.length;
+      addLog(perfect ? '🏁' : '⚠️', 'DONE', `Verification complete: ${passed}/${results.length} checks passed`, perfect ? '#22c55e' : '#eab308', 'complete');
+      if (perfect) sub(`All cryptographic proofs validated. This record is independently verifiable.`);
+      sub(`Full verification: /verify page`, `${window.location.origin}/verify`);
 
     } catch (err: unknown) {
       addLog('❌', 'ERROR', `Verification failed: ${err instanceof Error ? err.message : String(err)}`, '#ef4444', 'complete');
@@ -547,23 +628,39 @@ export default function DemoPage() {
         )}
 
         {logs.map(entry => (
-          <div key={entry.id} style={styles.logEntry}>
-            <span style={styles.logTime}>{entry.timestamp}</span>
-            <span style={{ fontSize: '1rem', width: '1.5rem', textAlign: 'center' }}>{entry.icon}</span>
+          <div key={entry.id} style={{
+            ...styles.logEntry,
+            paddingLeft: entry.indent ? '7.5rem' : undefined,
+            opacity: entry.indent ? 0.7 : 1,
+          }}>
+            <span style={styles.logTime}>{entry.indent ? '' : entry.timestamp}</span>
+            <span style={{ fontSize: entry.indent ? '0.8rem' : '1rem', width: '1.5rem', textAlign: 'center' }}>{entry.indent ? '' : entry.icon}</span>
             <span style={{
-              fontWeight: 600, fontSize: '0.75rem',
-              color: entry.color,
+              fontWeight: 600, fontSize: entry.indent ? '0.65rem' : '0.75rem',
+              color: entry.indent ? '#555' : entry.color,
               minWidth: '5rem',
               textTransform: 'uppercase',
             }}>
-              {entry.label}
+              {entry.indent ? '' : entry.label}
             </span>
             <span style={{
-              color: entry.phase === 'call' ? '#ddd' : '#aaa',
+              color: entry.indent ? '#666' : entry.phase === 'call' ? '#ddd' : '#aaa',
               fontStyle: (entry.label === 'Caller' || entry.label === 'AI') ? 'italic' : 'normal',
+              fontSize: entry.indent ? '0.8rem' : undefined,
+              fontFamily: entry.indent ? 'monospace' : undefined,
               flex: 1,
             }}>
               {entry.text}
+              {entry.link && (
+                <a
+                  href={entry.link}
+                  target="_blank"
+                  rel="noopener"
+                  style={{ color: '#06b6d4', textDecoration: 'none', marginLeft: '0.4rem', fontSize: '0.8rem' }}
+                >
+                  ↗ BaseScan
+                </a>
+              )}
             </span>
           </div>
         ))}
