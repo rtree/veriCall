@@ -13,8 +13,8 @@ import "./interfaces/IRiscZeroVerifier.sol";
  *         4. getProvenData() — decoded journal data reader
  *         5. verified flag — explicit verification status
  *
- *         Architecture follows LensMint Camera pattern (ETHGlobal Buenos Aires 2025
- *         vlayer Best ZK Proving dApp winner).
+ *         Architecture follows vlayer Web Proof + ZK Proof pattern
+ *         (TLSNotary attestation → RISC Zero Groth16 → on-chain verification).
  *
  *         Verifier injection:
  *           - Dev/Hackathon: RiscZeroMockVerifier(0xFFFFFFFF)

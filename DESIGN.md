@@ -683,7 +683,7 @@ struct CallRecord {
 - `journalHash == keccak256(journalDataAbi)` → journal integrity
 - **Decision–Journal binding**: `keccak256(reconstructed)` must match `keccak256(extractedData)` from the journal — prevents submitters from altering decision/reason after proof generation
 - **Immutable checks**: `EXPECTED_NOTARY_KEY_FP`, `expectedQueriesHash` — validated against journal fields
-- **URL prefix validation**: byte-by-byte check that journal URL starts with `expectedUrlPrefix` (LensMint pattern)
+- **URL prefix validation**: byte-by-byte check that journal URL starts with `expectedUrlPrefix`
 - **Custom errors**: `AlreadyRegistered`, `InvalidDecision`, `DecisionMismatch`, `ZKProofVerificationFailed`, etc. (replaces require strings)
 - Decoding `journalDataAbi` yields `decision`, `reason`, `systemPromptHash`, `transcriptHash` values
 - `sourceUrl` indicates which API endpoint was proven (derived from journal)
@@ -998,7 +998,7 @@ Changes from V2:
 2. **`sourceUrl` removed from args** — derived from journal data (proven by ZK proof)
 3. **`EXPECTED_NOTARY_KEY_FP` immutable** — validates TLSNotary key fingerprint against known constant
 4. **`expectedQueriesHash` owner-updatable** — validates JMESPath extraction hash (deploy with bytes32(0) then update after first proof)
-5. **URL prefix validation** — byte-by-byte check (LensMint pattern)
+5. **URL prefix validation** — byte-by-byte check
 6. **Decision–Journal binding** — reconstructs `extractedData` from decision+reason, verifies `keccak256` match
 7. **Custom errors** — `AlreadyRegistered`, `InvalidDecision`, `DecisionMismatch`, `ZKProofVerificationFailed`, etc. (replaces require strings)
 8. **5-arg `registerCallDecision`** — `(callId, decision, reason, zkProofSeal, journalDataAbi)` only

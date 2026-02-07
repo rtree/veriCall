@@ -9,7 +9,7 @@ import "./interfaces/IRiscZeroVerifier.sol";
  *         and journal-bound decision integrity.
  *
  * @dev    Upgrades from V2:
- *         1. EXPECTED_NOTARY_KEY_FP — immutable Notary fingerprint check (LensMint pattern)
+ *         1. EXPECTED_NOTARY_KEY_FP — immutable Notary fingerprint check (vlayer reference pattern)
  *         2. EXPECTED_QUERIES_HASH  — immutable JMESPath extraction hash check
  *         3. URL prefix validation  — journal URL must start with expectedUrlPrefix
  *         4. Decision–Journal binding — decision/reason reconstructed and compared
@@ -209,7 +209,7 @@ contract VeriCallRegistryV3 {
         if (expectedQueriesHash != bytes32(0) && queriesHash != expectedQueriesHash)
             revert InvalidQueriesHash();
 
-        // URL prefix check (byte-by-byte, like LensMint)
+        // URL prefix check (byte-by-byte)
         _validateUrlPrefix(url);
 
         // Validate proven hashes are non-empty
@@ -248,7 +248,7 @@ contract VeriCallRegistryV3 {
 
     /**
      * @dev Verify that the journal URL starts with expectedUrlPrefix.
-     *      Byte-by-byte comparison (same pattern as LensMint).
+     *      Byte-by-byte comparison for URL origin validation.
      */
     function _validateUrlPrefix(string memory url) internal view {
         bytes memory urlBytes = bytes(url);

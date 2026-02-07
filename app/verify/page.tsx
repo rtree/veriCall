@@ -324,7 +324,7 @@ npx tsx scripts/verify.ts`}
 
       {/* ─── Footer ─────────────────────────────────────── */}
       <footer style={styles.footer}>
-        <span>VeriCall — ETHGlobal Trifecta 2026</span>
+        <span>VeriCall — Trust-Minimized AI Call Verification</span>
         <a href={CONFIG.repo} target="_blank" rel="noopener" style={{ color: '#888' }}>
           GitHub ↗
         </a>
