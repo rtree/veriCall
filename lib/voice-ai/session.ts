@@ -9,7 +9,7 @@ import { TextToSpeech } from './text-to-speech';
 import { GeminiChat, CallDecision } from './gemini';
 import { mulawToLinear16 } from './audio-utils';
 import { sendVoiceAINotification } from './email-notify';
-import { createWitness, hashPhoneNumber } from '@/app/witness/_lib/vlayer-client';
+import { createWitness, hashPhoneNumber } from '@/lib/witness/pipeline';
 
 export interface SessionConfig {
   callSid: string;

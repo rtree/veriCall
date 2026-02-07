@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAllRecords } from '../_lib/store';
+import { getAllRecords } from '@/lib/witness/pipeline';
 
 /**
  * GET /witness/list

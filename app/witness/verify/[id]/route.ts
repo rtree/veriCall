@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getRecord, getByCallSid } from '../../_lib/store';
+import { getRecord, getByCallSid } from '@/lib/witness/pipeline';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
