@@ -149,6 +149,8 @@ veriCall/
 │
 ├── app/
 │   ├── page.tsx                 # Home page
+│   ├── demo/
+│   │   └── page.tsx             # Live demo page (SSE real-time pipeline viewer)
 │   ├── verify/
 │   │   ├── page.tsx             # Trust-minimized verification page (12 checks)
 │   │   └── useVerify.ts         # Client-side verification hook (viem + Base Sepolia RPC)
@@ -375,7 +377,18 @@ npx tsx scripts/verify.ts --record 2
 
 ## Live Demo
 
-Watch the entire pipeline in real-time — from phone call to on-chain record — in your terminal:
+Watch the entire pipeline in real-time — from phone call to on-chain record.
+
+### Web Demo (`/demo`)
+
+Open **[https://vericall-kkz6k4jema-uc.a.run.app/demo](https://vericall-kkz6k4jema-uc.a.run.app/demo)** in any browser.
+
+Shows the full pipeline in real-time with a visual step indicator:
+📞 Call → 🤖 AI Screen → ⚖️ Decision → 🔐 WebProof → 🧮 ZK → ⛓️ On-Chain
+
+After completion, links directly to the **Verification page** to independently verify the record.
+
+### CLI Demo (`scripts/demo.ts`)
 
 ```bash
 # Connect to production (Cloud Run SSE stream)
@@ -390,9 +403,10 @@ When a phone call comes in, you see:
 2. 🗣️ **Conversation log** — real-time STT transcripts and AI responses
 3. 🤖 **AI Decision** — BLOCK/RECORD with reasoning
 4. 📧 **Email sent** — notification dispatched
-5. 🔐 **Web Proof** → **ZK Proof** → **On-Chain TX** — full witness pipeline with hashes and links
+5. 🔐 **Web Proof** → **ZK Proof** → **On-Chain TX** — full witness pipeline
+6. 🔍 **Auto-Verification** — immediately reads the record back from chain and runs 12 checks (C1–C5 + V1–V7)
 
-Requires `VERICALL_DEMO_TOKEN` (Bearer auth). The CLI auto-reconnects on disconnect.
+The CLI auto-reconnects on disconnect. Bearer auth (`VERICALL_DEMO_TOKEN`) required for CLI.
 
 ## API Endpoints
 
@@ -406,6 +420,7 @@ Requires `VERICALL_DEMO_TOKEN` (Bearer auth). The CLI auto-reconnects on disconn
 | GET | `/api/demo/stream` | SSE stream for live demo (Bearer auth) |
 | GET | `/api/health` | Health check |
 | WS | `/stream` | Twilio Media Stream (real-time audio) |
+| — | `/demo` | Live demo page (SSE real-time pipeline viewer) |
 | — | `/verify` | Trust-minimized verification page (client-side) |
 
 ## Getting Started
@@ -498,6 +513,7 @@ gcloud run deploy vericall \
 | Trust-minimized verification page (`/verify`) | ✅ Implemented (12 checks, client-side) |
 | Trust-minimized verification CLI (`scripts/verify.ts`) | ✅ Implemented (14 checks, `--deep`) |
 | Live demo CLI with SSE streaming (`scripts/demo.ts`) | ✅ Implemented |
+| Live demo web page (`/demo`) | ✅ Implemented |
 | Cloud SQL decision persistence | ✅ Implemented |
 | Production Groth16 verification | 📋 Planned (awaiting vlayer production proofs) |
 

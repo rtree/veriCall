@@ -16,6 +16,15 @@ export default function Home() {
         }}>
           📊 Monitoring
         </Link>
+        <Link href="/demo" style={{ 
+          background: '#06b6d410', 
+          padding: '0.75rem 1.5rem', 
+          borderRadius: '8px',
+          border: '1px solid #06b6d430',
+          color: '#06b6d4',
+        }}>
+          📞 Live Demo
+        </Link>
         <Link href="/verify" style={{ 
           background: '#0a2a0a', 
           padding: '0.75rem 1.5rem', 

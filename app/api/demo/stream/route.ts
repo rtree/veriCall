@@ -16,12 +16,22 @@ import { demoBus, type DemoEvent } from '@/lib/demo/event-bus';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest): Promise<Response> {
-  // ─── Bearer token auth ──────────────────────────────────
+  // ─── Auth: Bearer token OR same-origin (web page) ───────
   const expected = process.env.VERICALL_DEMO_TOKEN;
   if (expected) {
     const auth = request.headers.get('authorization');
     const token = auth?.startsWith('Bearer ') ? auth.slice(7) : null;
-    if (token !== expected) {
+    const referer = request.headers.get('referer') || '';
+    const origin = request.headers.get('origin') || '';
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || '';
+
+    // Allow: valid Bearer token OR same-origin request (from /demo page)
+    const isSameOrigin = (referer && baseUrl && referer.startsWith(baseUrl))
+      || (origin && baseUrl && origin === new URL(baseUrl).origin)
+      || referer.includes('/demo');
+    const hasValidToken = token === expected;
+
+    if (!hasValidToken && !isSameOrigin) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { 'Content-Type': 'application/json' },
