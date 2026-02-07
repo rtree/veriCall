@@ -4,6 +4,10 @@
   <a href="https://vericall-kkz6k4jema-uc.a.run.app/demo">
     <img src="https://img.shields.io/badge/▶_LIVE_DEMO-Watch_the_Pipeline-06b6d4?style=for-the-badge" alt="Live Demo" />
   </a>
+  &nbsp;
+  <a href="https://vericall-kkz6k4jema-uc.a.run.app/verify">
+    <img src="https://img.shields.io/badge/🔍_VERIFY-Check_On--Chain_Records-10b981?style=for-the-badge" alt="Verify Records" />
+  </a>
 </p>
 
 **Verifiable AI Call Screening — Proving Fairness On-Chain**
