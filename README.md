@@ -52,7 +52,7 @@ This pattern — **proving that an AI made a specific decision given specific in
 
 VeriCall is a **working proof-of-concept** for this pattern — phone calls are the first use case, but the verification framework (Web Proof → ZK Proof → on-chain journal validation) is designed to be reusable for any AI decision pipeline.
 
-> 🔍 **You don't need to trust VeriCall.** Every on-chain record can be independently verified — [from your browser](/verify) or [from the CLI](scripts/verify.ts). No API keys, no VeriCall servers, just you and the chain. See [Trust-Minimized Verification](#trust-minimized-verification).
+> 🔍 **You don't need to trust VeriCall.** Every on-chain record can be independently verified — [from your browser](https://vericall-kkz6k4jema-uc.a.run.app/verify) or [from the CLI](scripts/verify.ts). No API keys, no VeriCall servers, just you and the chain. See [Trust-Minimized Verification](#trust-minimized-verification).
 
 ## Architecture
 
