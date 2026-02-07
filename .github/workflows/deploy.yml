@@ -108,9 +108,10 @@ jobs:
             --max-instances 10 \
             --session-affinity \
             --timeout 600 \
-            --set-env-vars="NODE_ENV=production" \
+            --add-cloudsql-instances=ethglobal-479011:us-central1:vericall-db \
+            --set-env-vars="NODE_ENV=production,CLOUD_SQL_CONNECTION_NAME=ethglobal-479011:us-central1:vericall-db,DB_NAME=vericall,DB_IAM_USER=vericall-deploy@ethglobal-479011.iam,NEXT_PUBLIC_BASE_URL=https://vericall-kkz6k4jema-uc.a.run.app" \
             --set-secrets="TWILIO_ACCOUNT_SID=TWILIO_ACCOUNT_SID:latest,TWILIO_AUTH_TOKEN=TWILIO_AUTH_TOKEN:latest,TWILIO_PHONE_NUMBER=TWILIO_PHONE_NUMBER:latest,DESTINATION_PHONE_NUMBER=DESTINATION_PHONE_NUMBER:latest,FORWARD_TIMEOUT=FORWARD_TIMEOUT:latest,WHITELIST_NUMBERS=WHITELIST_NUMBERS:latest,SENDGRID_API_KEY=SENDGRID_API_KEY:latest,NOTIFICATION_EMAIL=NOTIFICATION_EMAIL:latest,FROM_EMAIL=FROM_EMAIL:latest,DEPLOYER_MNEMONIC=DEPLOYER_MNEMONIC:latest,VLAYER_API_KEY=VLAYER_API_KEY:latest,VLAYER_CLIENT_ID=VLAYER_CLIENT_ID:latest,VLAYER_WEB_PROVER_URL=VLAYER_WEB_PROVER_URL:latest,VLAYER_ZK_PROVER_URL=VLAYER_ZK_PROVER_URL:latest,VERICALL_CONTRACT_ADDRESS=VERICALL_CONTRACT_ADDRESS:latest" \
-            --service-account ${{ env.PROJECT_NUMBER }}-compute@developer.gserviceaccount.com
+            --service-account vericall-deploy@ethglobal-479011.iam.gserviceaccount.com
           
           URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region ${{ env.REGION }} --format='value(status.url)')
           echo "url=$URL" >> $GITHUB_OUTPUT

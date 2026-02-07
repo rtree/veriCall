@@ -100,6 +100,13 @@ export const VERICALL_REGISTRY_ABI = [
   },
   {
     type: 'function',
+    name: 'callIds',
+    inputs: [{ name: '', type: 'uint256' }],
+    outputs: [{ name: '', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     name: 'transferOwnership',
     inputs: [{ name: 'newOwner', type: 'address' }],
     outputs: [],

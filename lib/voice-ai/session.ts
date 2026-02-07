@@ -10,6 +10,7 @@ import { GeminiChat, CallDecision } from './gemini';
 import { mulawToLinear16 } from './audio-utils';
 import { sendVoiceAINotification } from './email-notify';
 import { createWitness, hashPhoneNumber } from '@/lib/witness/pipeline';
+import { storeDecisionForProof } from '@/lib/witness/decision-store';
 
 export interface SessionConfig {
   callSid: string;
@@ -469,6 +470,21 @@ export class VoiceAISession {
       console.log(`[Session ${this.config.callSid}] Email notification sent (${this.decision}) with summary`);
     } catch (error) {
       console.error(`[Session ${this.config.callSid}] Failed to send email:`, error);
+    }
+
+    // Store decision in Cloud SQL for vlayer Web Proof attestation
+    try {
+      await storeDecisionForProof({
+        callSid: this.config.callSid,
+        decision: this.decision!,
+        reason: summary,
+        transcript,
+        callerHashShort: hashPhoneNumber(this.config.from),
+        conversationTurns: entries.length,
+      });
+      console.log(`[Session ${this.config.callSid}] 📋 Decision stored in Cloud SQL`);
+    } catch (error) {
+      console.error(`[Session ${this.config.callSid}] 📋 Decision store failed:`, error);
     }
 
     // Create on-chain witness proof (fire-and-forget — never blocks the call)

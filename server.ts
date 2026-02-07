@@ -108,4 +108,17 @@ app.prepare().then(() => {
     console.log(`> Ready on http://${hostname}:${port}`);
     console.log(`> WebSocket ready on ws://${hostname}:${port}/stream`);
   });
+
+  // Graceful shutdown
+  const shutdown = async () => {
+    console.log('🛑 Shutting down...');
+    try {
+      const { closeDb } = await import('@/lib/db');
+      await closeDb();
+      console.log('🗄️ DB pool closed');
+    } catch { /* ignore if db not initialized */ }
+    process.exit(0);
+  };
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 });

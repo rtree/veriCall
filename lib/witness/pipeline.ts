@@ -86,12 +86,21 @@ export function getAllRecords(): WitnessRecord[] {
 
 // ─── Configuration ────────────────────────────────────────────
 
-const PROOF_SOURCE_URL =
-  process.env.VLAYER_PROOF_SOURCE_URL ||
-  'https://data-api.binance.vision/api/v3/ticker/price?symbol=ETHUSDC';
+/**
+ * Build the Web Proof source URL for a given call.
+ * Points to our own /api/witness/decision/[callSid] endpoint,
+ * so vlayer TLSNotary proves THIS server returned this decision.
+ */
+function getProofSourceUrl(callSid: string): string {
+  const base =
+    process.env.VLAYER_PROOF_SOURCE_URL ||
+    process.env.NEXT_PUBLIC_BASE_URL ||
+    'https://vericall-kkz6k4jema-uc.a.run.app';
+  return `${base}/api/witness/decision/${callSid}`;
+}
 
 const PROOF_JMESPATH = (
-  process.env.VLAYER_PROOF_JMESPATH || 'price,symbol'
+  process.env.VLAYER_PROOF_JMESPATH || 'decision,reason'
 ).split(',');
 
 const DECISION_MAP: Record<string, number> = {
@@ -157,9 +166,10 @@ async function processWitnessAsync(
     return;
   }
 
-  // Step 1: Web Proof
-  console.log(`${tag} Step 1/3: Generating Web Proof from ${PROOF_SOURCE_URL}`);
-  const webProof = await vlayerWebProof(PROOF_SOURCE_URL);
+  // Step 1: Web Proof (prove our own decision API via TLSNotary)
+  const proofUrl = getProofSourceUrl(record.callSid);
+  console.log(`${tag} Step 1/3: Generating Web Proof from ${proofUrl}`);
+  const webProof = await vlayerWebProof(proofUrl);
   updateStatus(record.id, 'web-proof', {
     webProof: {
       proofId: `wp_${Date.now()}`,
@@ -207,7 +217,7 @@ async function processWitnessAsync(
       reason: data.reason.slice(0, 200),
       zkProofSeal: zkProof,
       journalDataAbi,
-      sourceUrl: PROOF_SOURCE_URL,
+      sourceUrl: proofUrl,
     });
 
     updateStatus(record.id, 'on-chain', {
