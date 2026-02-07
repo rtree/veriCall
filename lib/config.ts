@@ -4,7 +4,7 @@
  *
  * コントラクトアドレスの優先順位:
  *   1. 環境変数 VERICALL_CONTRACT_ADDRESS（Cloud Run / .env.local）
- *   2. contracts/deployment.json（deploy-v2.ts が自動生成）
+ *   2. contracts/deployment.json（deploy-v3.ts が自動生成）
  *   ハードコードフォールバックは持たない。設定漏れは起動時に検知する。
  */
 
@@ -57,7 +57,7 @@ const _contractAddr = process.env.VERICALL_CONTRACT_ADDRESS || loadDeploymentAdd
 if (!_contractAddr) {
   console.warn(
     '⚠️  VERICALL_CONTRACT_ADDRESS not set and contracts/deployment.json not found. ' +
-    'Run `npx tsx scripts/deploy-v2.ts` to deploy and generate it.',
+    'Run `npx tsx scripts/deploy-v3.ts` to deploy and generate it.',
   );
 }
 export const contractConfig = {

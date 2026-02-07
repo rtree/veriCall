@@ -275,18 +275,16 @@ These values are encoded into the ZK Proof's public output (journal).
 pipeline.ts
     │
     └─ submitDecisionOnChain({
-         callSid, callerPhone, decision, reason,
-         zkProofSeal, journalDataAbi, sourceUrl
+         callSid, decision, reason,
+         zkProofSeal, journalDataAbi
        })
          │
-         └─ VeriCallRegistryV2.registerCallDecision(
+         └─ VeriCallRegistryV3.registerCallDecision(
               callId,        // keccak256(callSid + timestamp)
-              callerHash,    // keccak256(phoneNumber) — privacy-preserving
               decision,      // 1=ACCEPT, 2=BLOCK, 3=RECORD
               reason,        // AI's decision reason (≤200 chars)
               zkProofSeal,   // RISC Zero seal
-              journalDataAbi,// ABI-encoded public outputs
-              sourceUrl      // The URL that was proven
+              journalDataAbi // ABI-encoded public outputs
             )
 ```
 
@@ -294,12 +292,14 @@ pipeline.ts
 - Sends TX to Base Sepolia via `viem`
 - Wallet: Derived from `DEPLOYER_MNEMONIC`
 
-**File**: [contracts/VeriCallRegistryV2.sol](contracts/VeriCallRegistryV2.sol)
-- `registerCallDecision()`: Registers record + verifies ZK proof on-chain
+**File**: [contracts/VeriCallRegistryV3.sol](contracts/VeriCallRegistryV3.sol)
+- `registerCallDecision()`: 5 args (no `callerHash`, no `sourceUrl`) — registers record + verifies ZK proof on-chain
+- `sourceUrl` is derived from the journal data (proven by ZK proof), not passed as an external argument
+- Decision–Journal binding: reconstructs `extractedData` from decision+reason and verifies `keccak256` match
 - `verifyJournal()`: Checks `keccak256(journalDataAbi) == journalHash`
 - `getRecord()` / `getProvenData()` / `getStats()` / `callIds[]`: Read functions
 
-> **What this proves**: The smart contract calls `verifier.verify(seal, imageId, sha256(journalDataAbi))`, which verifies the ZK proof on-chain. If verification fails, the transaction reverts and no record is stored. A `verified: true` record on-chain means the ZK proof was cryptographically validated by the blockchain itself — creating an immutable, tamper-proof audit trail that anyone can independently verify.
+> **What this proves**: The smart contract calls `verifier.verify(seal, imageId, sha256(journalDataAbi))`, which verifies the ZK proof on-chain. V3 additionally validates that the `decision` and `reason` args match the `extractedData` proven inside the journal — preventing a submitter from supplying a valid proof but altering the decision label. If any check fails, the transaction reverts via custom errors and no record is stored. A `verified: true` record on-chain means both the ZK proof and the decision–journal binding were cryptographically validated by the blockchain itself — creating an immutable, tamper-proof audit trail that anyone can independently verify.
 
 ### 2.4 Proof Verification Methods
 
@@ -398,17 +398,18 @@ veriCall/
 │       ├── vlayer-api.ts               # vlayer REST API client
 │       ├── on-chain.ts                 # Base Sepolia TX submission
 │       ├── decision-store.ts           # Cloud SQL decision data store
-│       └── abi.ts                      # VeriCallRegistryV2 ABI
+│       └── abi.ts                      # VeriCallRegistryV3 ABI
 ├── contracts/
 │   ├── VeriCallRegistry.sol            # V1 Solidity contract
 │   ├── VeriCallRegistryV2.sol          # V2 Solidity contract (with ZK verification)
+│   ├── VeriCallRegistryV3.sol          # V3 Solidity contract (journal-bound, current)
 │   ├── RiscZeroMockVerifier.sol        # Mock Verifier for development
 │   ├── interfaces/
 │   │   └── IRiscZeroVerifier.sol       # RISC Zero standard interface
 │   └── deployment.json                 # Deployment info (Single Source of Truth)
 ├── scripts/
-│   ├── check-registry.ts              # CLI registry inspector (V1/V2)
-│   └── deploy-v2.ts                   # V2 deployment script (with auto-sync)
+│   ├── check-registry.ts              # CLI registry inspector (V1/V2/V3)
+│   └── deploy-v3.ts                   # V3 deployment script (with auto-sync)
 └── .github/workflows/
     └── deploy.yml                      # GitHub Actions CI/CD
 ```
@@ -441,7 +442,7 @@ veriCall/
 │  Twilio           │  │  vlayer          │  │  Base Sepolia │
 │  (PSTN Gateway)   │  │  (ZK SaaS)      │  │  (L2 Chain)   │
 │                    │  │                  │  │               │
-│  - Phone number   │  │  - Web Prover   │  │  - V2 Contract│
+│  - Phone number   │  │  - Web Prover   │  │  - V3 Contract│
 │  - Media Stream   │  │  - ZK Prover    │  │  - MockVerifier│
 │  - WebSocket      │  │  - TLSNotary    │  │               │
 └──────────────────┘  └──────────────────┘  └──────────────┘
@@ -559,35 +560,41 @@ git push origin master
 
 ### 3.7 Contract Design
 
-**VeriCallRegistryV2** (deployed on Base Sepolia)
+**VeriCallRegistryV3** (deployed on Base Sepolia: `0x55d90c4c615884c2af3fd1b14e8d316610b66fd3`)
 
 ```solidity
 struct CallRecord {
-    bytes32 callerHash;        // keccak256(phoneNumber) — privacy-preserving
     Decision decision;         // ACCEPT(1) / BLOCK(2) / RECORD(3)
     string reason;             // AI's decision reason (≤200 chars)
     bytes32 journalHash;       // keccak256(journalDataAbi) — commitment
     bytes zkProofSeal;         // RISC Zero seal (Mock: 36B / Prod: ~256B)
     bytes journalDataAbi;      // ABI-encoded public outputs (all 6 fields)
-    string sourceUrl;          // URL that was proven
+    string sourceUrl;          // URL from journal (not external arg)
     uint256 timestamp;         // block.timestamp
     address submitter;         // TX sender
     bool verified;             // ZK verification passed flag
 }
 ```
 
+> **V3 change from V2**: `callerHash` (keccak256 of phone number) has been **removed** from `CallRecord` for privacy — no phone number hash is stored on-chain. `sourceUrl` is now derived from the journal data (proven by ZK proof) rather than supplied as an external argument.
+
 **Verifiability**:
 - `verifier.verify(seal, imageId, sha256(journalDataAbi))` → on-chain ZK proof verification
 - `journalHash == keccak256(journalDataAbi)` → journal integrity
+- **Decision–Journal binding**: `keccak256(reconstructed)` must match `keccak256(extractedData)` from the journal — prevents submitters from altering decision/reason after proof generation
+- **Immutable checks**: `EXPECTED_NOTARY_KEY_FP`, `EXPECTED_QUERIES_HASH` — validated against journal fields
+- **URL prefix validation**: byte-by-byte check that journal URL starts with `expectedUrlPrefix` (LensMint pattern)
+- **Custom errors**: `AlreadyRegistered`, `InvalidDecision`, `DecisionMismatch`, `ZKProofVerificationFailed`, etc. (replaces require strings)
 - Decoding `journalDataAbi` yields `decision`, `reason` values
-- `sourceUrl` indicates which API endpoint was proven
+- `sourceUrl` indicates which API endpoint was proven (derived from journal)
 - `verified == true` means the ZK proof passed on-chain verification
 
 **Phase Plan**:
 - Phase 1 (complete): On-chain storage of proof data (Proof of Existence) — VeriCallRegistry V1
-- **Phase 2 (current): MockVerifier + on-chain ZK verification** — VeriCallRegistryV2
-- Phase 3 (future): vlayer production → switch to RiscZeroVerifierRouter
-- Phase 4 (future): Cross-chain verification on Sui
+- Phase 2 (complete): MockVerifier + on-chain ZK verification — VeriCallRegistryV2 (`0x656ae703ca94cc4247493dec6f9af9c6f974ba82`)
+- **Phase 3 (current): Journal-bound decision integrity + immutable validation** — VeriCallRegistryV3 (`0x55d90c4c615884c2af3fd1b14e8d316610b66fd3`)
+- Phase 4 (future): vlayer production → switch to RiscZeroVerifierRouter
+- Phase 5 (future): Cross-chain verification on Sui
 
 ---
 
@@ -762,8 +769,14 @@ RISC Zero uses SHA-256 internally, so the Solidity side must also use `sha256()`
 │  │                          │    │  c34b32bfa86fb711             │  │
 │  └──────────────────────────┘    └──────────────────────────────┘  │
 │                                                                     │
-│  Injected via VeriCallRegistryV2 constructor:                       │
-│  constructor(IRiscZeroVerifier _verifier, bytes32 _imageId)         │
+│  Injected via VeriCallRegistryV3 constructor:                       │
+│  constructor(                                                       │
+│    IRiscZeroVerifier _verifier,                                     │
+│    bytes32 _imageId,                                                │
+│    bytes32 _expectedNotaryFP,                                       │
+│    bytes32 _expectedQueriesHash,                                    │
+│    string memory _expectedUrlPrefix                                 │
+│  )                                                                  │
 │                                                                     │
 │  Switching: Change verifier address at deploy time only             │
 │             No contract code changes required                       │
@@ -772,36 +785,42 @@ RISC Zero uses SHA-256 internally, so the Solidity side must also use `sha256()`
 
 | | RiscZeroMockVerifier | RiscZeroVerifierRouter |
 |---|---|---|
-| Base Sepolia Address | Self-deployed | `0x0b144e07a0826182b6b59788c34b32bfa86fb711` |
+| Base Sepolia Address | `0xc6c4c01cdeec0c2f07575ea5c8c751fe4de2bcbe` (V3) | `0x0b144e07a0826182b6b59788c34b32bfa86fb711` |
 | Verification | `seal[0:4] == 0xFFFFFFFF` | Groth16 BN254 cryptographic verification |
 | Security | Test-only (anyone can forge) | Cryptographically secure |
 | vlayer Compatibility | Accepts current dev-mode seals | Will accept future production seals |
 | Gas Cost | ~3,000 gas | ~300,000 gas (pairing operations) |
 | Use Case | Development / hackathon | Production |
 
-### 4.5 VeriCallRegistryV2 Architecture
+### 4.5 VeriCallRegistryV3 Architecture
 
-Changes from V1:
-1. **`IRiscZeroVerifier.verify()` call** — On-chain ZK proof verification
-2. **`abi.decode(journalDataAbi)`** — Journal decoding in Solidity
-3. **Field validation** — TLSNotary/HTTP metadata consistency checks
-4. **`getProvenData()` view function** — Read decoded data
-5. **`verified` flag** — Explicit proof-verified indicator
+Changes from V2:
+1. **`callerHash` removed** from `CallRecord` and events — no phone number hash on-chain (privacy)
+2. **`sourceUrl` removed from args** — derived from journal data (proven by ZK proof)
+3. **`EXPECTED_NOTARY_KEY_FP` immutable** — validates TLSNotary key fingerprint against known constant
+4. **`EXPECTED_QUERIES_HASH` immutable** — validates JMESPath extraction hash
+5. **URL prefix validation** — byte-by-byte check (LensMint pattern)
+6. **Decision–Journal binding** — reconstructs `extractedData` from decision+reason, verifies `keccak256` match
+7. **Custom errors** — `AlreadyRegistered`, `InvalidDecision`, `DecisionMismatch`, `ZKProofVerificationFailed`, etc. (replaces require strings)
+8. **5-arg `registerCallDecision`** — `(callId, decision, reason, zkProofSeal, journalDataAbi)` only
 
 ```
-VeriCallRegistryV2
+VeriCallRegistryV3
 │
 ├── State (immutable)
 │   ├── verifier: IRiscZeroVerifier     ← Injected via constructor
-│   └── imageId: bytes32                ← vlayer guestId
+│   ├── EXPECTED_NOTARY_KEY_FP: bytes32  ← Known TLSNotary fingerprint
+│   └── EXPECTED_QUERIES_HASH: bytes32   ← JMESPath extraction hash
 │
 ├── State (mutable)
 │   ├── owner: address
+│   ├── imageId: bytes32                 ← vlayer guestId (updatable)
+│   ├── expectedUrlPrefix: string
 │   ├── records: mapping(bytes32 → CallRecord)
 │   ├── callIds: bytes32[]
 │   └── totalAccepted / totalBlocked / totalRecorded
 │
-├── registerCallDecision(callId, callerHash, decision, reason, seal, journal, url)
+├── registerCallDecision(callId, decision, reason, seal, journal)
 │   │
 │   ├── Step 1: ZK Proof Verification
 │   │   └── verifier.verify(seal, imageId, sha256(journalDataAbi))
@@ -810,17 +829,24 @@ VeriCallRegistryV2
 │   │
 │   ├── Step 2: Journal Decode & Validation
 │   │   └── abi.decode(journalDataAbi) → 6 fields:
-│   │       ├── notaryKeyFingerprint ≠ bytes32(0)   ← TLSNotary key exists
-│   │       ├── method == "GET"                      ← Valid HTTP method
-│   │       ├── bytes(url).length > 0                ← URL exists
-│   │       └── bytes(extractedData).length > 0      ← Extracted data exists
+│   │       ├── notaryKeyFingerprint == EXPECTED_NOTARY_KEY_FP  ← immutable check
+│   │       ├── keccak256(method) == keccak256("GET")           ← HTTP method
+│   │       ├── queriesHash == EXPECTED_QUERIES_HASH             ← immutable check
+│   │       ├── _validateUrlPrefix(url)                          ← byte-by-byte prefix
+│   │       └── bytes(extractedData).length > 0                  ← not empty
 │   │
-│   ├── Step 3: CallRecord Storage
+│   ├── Step 3: Decision–Journal Binding
+│   │   └── Reconstruct '["BLOCK","reason"]' from args
+│   │       └── keccak256(reconstructed) == keccak256(extractedData)
+│   │           └── Mismatch → revert DecisionMismatch()
+│   │
+│   ├── Step 4: CallRecord Storage
 │   │   └── journalHash = keccak256(journalDataAbi) stored as commitment
+│   │   └── sourceUrl = url from journal (not external arg)
 │   │
-│   └── Step 4: Event Emission
+│   └── Step 5: Event Emission
 │       ├── ProofVerified(callId, imageId, journalDigest)
-│       └── CallDecisionRecorded(callId, callerHash, decision, timestamp, submitter)
+│       └── CallDecisionRecorded(callId, decision, timestamp, submitter)
 │
 ├── getRecord(callId) → CallRecord
 ├── getProvenData(callId) → (notaryKeyFP, method, url, timestamp, queriesHash, extractedData)
@@ -832,17 +858,16 @@ VeriCallRegistryV2
     └── transferOwnership(address) [onlyOwner]
 ```
 
-#### CallRecord Struct (V2)
+#### CallRecord Struct (V3)
 
 ```solidity
 struct CallRecord {
-    bytes32 callerHash;        // keccak256(phoneNumber) — privacy-preserving
     Decision decision;         // ACCEPT(1) / BLOCK(2) / RECORD(3)
     string reason;             // AI's decision reason (≤200 chars)
     bytes32 journalHash;       // keccak256(journalDataAbi) — commitment
     bytes zkProofSeal;         // RISC Zero seal (Mock: 36B / Prod: ~256B)
     bytes journalDataAbi;      // ABI-encoded public outputs (all 6 fields)
-    string sourceUrl;          // URL that was proven
+    string sourceUrl;          // URL from journal (not external arg)
     uint256 timestamp;         // block.timestamp
     address submitter;         // TX sender
     bool verified;             // ZK verification passed flag (always true — unreachable if reverted)
@@ -972,21 +997,19 @@ struct CallRecord {
   Duration: 30–120 seconds
 
 ═══════════════════════════════════════════════════════════════════════
- Step 5: On-Chain Registration + ZK Verification (VeriCallRegistryV2)
+ Step 5: On-Chain Registration + ZK Verification (VeriCallRegistryV3)
 ═══════════════════════════════════════════════════════════════════════
 
   pipeline.ts: submitDecisionOnChain({...})
 
   TX construction (viem):
-    to:       VeriCallRegistryV2 (0x...)
+    to:       VeriCallRegistryV3 (0x55d90c4c615884c2af3fd1b14e8d316610b66fd3)
     function: registerCallDecision(
       callId:          keccak256("vericall_CA1234..._1738900000"),
-      callerHash:      keccak256("+1234567890"),
       decision:        2 (BLOCK),
       reason:          "Caller was selling SEO services...",
       zkProofSeal:     0xffffffff6e251f4d...,
-      journalDataAbi:  0x000000... (ABI-encoded),
-      sourceUrl:       "https://vericall-.../api/witness/decision/CA1234..."
+      journalDataAbi:  0x000000... (ABI-encoded)
     )
 
   Contract internal processing:
@@ -1014,31 +1037,47 @@ struct CallRecord {
     │    = abi.decode(journalDataAbi,                              │
     │        (bytes32, string, string, uint256, bytes32, string))   │
     │                                                              │
-    │  require(notaryKeyFP != bytes32(0))      → TLSNotary key OK │
-    │  require(method == "GET")                → HTTP method valid  │
-    │  require(bytes(url).length > 0)          → URL exists        │
-    │  require(bytes(extractedData).length > 0) → Extracted data OK│
+    │  if (notaryKeyFP != EXPECTED_NOTARY_KEY_FP)                  │
+    │      revert InvalidNotaryKeyFingerprint() ← immutable check  │
+    │  if (keccak256(method) != keccak256("GET"))                   │
+    │      revert InvalidHttpMethod()                              │
+    │  if (queriesHash != EXPECTED_QUERIES_HASH)                    │
+    │      revert InvalidQueriesHash()          ← immutable check  │
+    │  _validateUrlPrefix(url)                  ← byte-by-byte     │
+    │  if (bytes(extractedData).length == 0)                       │
+    │      revert EmptyExtractedData()                             │
     │                                                              │
-    │  → Proves: The journal contains well-formed, non-empty data  │
-    │    that matches expected TLSNotary attestation patterns       │
+    │  → Proves: The journal contains well-formed data matching     │
+    │    known immutable constants and expected URL prefix           │
     └──────────────────────────────────────────────────────────────┘
 
-    ┌─ Step 5c: Record Storage ────────────────────────────────────┐
+    ┌─ Step 5c: Decision–Journal Binding ──────────────────────────┐
+    │                                                              │
+    │  Reconstruct expected extractedData from args:                │
+    │    '["BLOCK","Caller was selling SEO services..."]'           │
+    │                                                              │
+    │  keccak256(reconstructed) == keccak256(extractedData)         │
+    │    → Mismatch: revert DecisionMismatch()                     │
+    │                                                              │
+    │  → Proves: The submitter cannot alter decision/reason after   │
+    │    proof generation — args are bound to the journal            │
+    └──────────────────────────────────────────────────────────────┘
+
+    ┌─ Step 5d: Record Storage ────────────────────────────────────┐
     │                                                              │
     │  records[callId] = CallRecord({                              │
-    │    callerHash:     keccak256("+1234567890"),                  │
     │    decision:       BLOCK,                                    │
     │    reason:         "Caller was selling SEO services...",      │
     │    journalHash:    keccak256(journalDataAbi),                │
     │    zkProofSeal:    0xffffffff...,                             │
     │    journalDataAbi: 0x000000...,                              │
-    │    sourceUrl:      "https://vericall-.../.../CA1234...",      │
+    │    sourceUrl:      url (from journal),                       │
     │    timestamp:      block.timestamp,                          │
     │    submitter:      0xBC5e73A464...,                          │
     │    verified:       true                                      │
     │  })                                                          │
     │                                                              │
-    │  emit CallDecisionRecorded(callId, callerHash, BLOCK, ts, …) │
+    │  emit CallDecisionRecorded(callId, BLOCK, ts, submitter)     │
     │                                                              │
     │  → Proves: An immutable, timestamped record now exists       │
     │    on-chain that can never be altered or deleted              │
@@ -1132,41 +1171,47 @@ scripts/deploy-v2.ts
 When vlayer starts returning production Groth16 proofs:
 
 ```
-1. Redeploy VeriCallRegistryV2
+1. Redeploy VeriCallRegistryV3
    constructor(
      IRiscZeroVerifier(0x0b144e07a0826182b6b59788c34b32bfa86fb711),  // RiscZeroVerifierRouter
-     guestId
+     guestId,
+     expectedNotaryFP,
+     expectedQueriesHash,
+     expectedUrlPrefix
    )
 
 2. Pipeline code requires no changes (only the seal format changes)
 
 3. Past MockVerifier records and new Production records
-   will be on different contracts (V2-Mock / V2-Prod)
+   will be on different contracts (V3-Mock / V3-Prod)
 ```
 
-### 4.8 File Structure (V2 Additions)
+### 4.8 File Structure (V3 Additions)
 
 ```
 contracts/
-├── VeriCallRegistry.sol              # V1 (Phase 1, existing, 0xe454ca...)
-├── VeriCallRegistryV2.sol            # V2 (Phase 2, new) ← CURRENT
-├── RiscZeroMockVerifier.sol          # Mock Verifier (new)
+├── VeriCallRegistry.sol              # V1 (Phase 1, 0xe454ca...)
+├── VeriCallRegistryV2.sol            # V2 (Phase 2, 0x656ae7...)
+├── VeriCallRegistryV3.sol            # V3 (Phase 3, 0x55d90c...) ← CURRENT
+├── RiscZeroMockVerifier.sol          # Mock Verifier (0xc6c4c0...)
 ├── interfaces/
-│   └── IRiscZeroVerifier.sol         # RISC Zero standard interface (new)
+│   └── IRiscZeroVerifier.sol         # RISC Zero standard interface
 ├── deployment.json                   # Deployment info (Single Source of Truth)
 └── out/                              # Forge build output
     ├── VeriCallRegistry.sol/
     ├── VeriCallRegistryV2.sol/
+    ├── VeriCallRegistryV3.sol/
     └── RiscZeroMockVerifier.sol/
 
 scripts/
-├── check-registry.ts                 # CLI inspector (V1/V2 compatible)
-└── deploy-v2.ts                      # V2 deploy script (with auto-sync)
+├── check-registry.ts                 # CLI inspector (V1/V2/V3 compatible)
+├── deploy-v2.ts                      # V2 deploy script (historical)
+└── deploy-v3.ts                      # V3 deploy script (with auto-sync)
 
 lib/witness/
-├── abi.ts                            # V2 ABI (updated)
-├── on-chain.ts                       # On-chain operations (V2 compatible)
-├── pipeline.ts                       # Pipeline (no changes — same function interface)
+├── abi.ts                            # V3 ABI (updated)
+├── on-chain.ts                       # On-chain operations (V3: 5-arg registerCallDecision)
+├── pipeline.ts                       # Pipeline (V3: no callerPhone/sourceUrl passed)
 ├── vlayer-api.ts                     # vlayer API client (no changes)
 └── decision-store.ts                 # Cloud SQL store (no changes)
 ```

@@ -1,15 +1,15 @@
 #!/usr/bin/env npx tsx
 /**
- * VeriCall Registry Inspector — CLI (V2)
+ * VeriCall Registry Inspector — CLI (V3)
  *
- * Read on-chain records from VeriCallRegistryV2 and decode the
+ * Read on-chain records from VeriCallRegistryV3 and decode the
  * vlayer ZK proof journal data using on-chain getProvenData().
  *
  * Usage:
  *   npx tsx scripts/check-registry.ts [--json] [--v1]
  *
- * V2 uses on-chain getProvenData() for journal decoding — no more
- * heuristic byte-scanning. Each record also has a `verified` flag.
+ * V3 uses on-chain getProvenData() for journal decoding.
+ * Each record has a `verified` flag and decision-journal binding.
  */
 
 import { createPublicClient, http } from 'viem';
@@ -88,7 +88,7 @@ async function main() {
 
   // Header
   if (!JSON_MODE) {
-    console.log(`\n${BOLD}⛓️  VeriCall Registry Inspector (${USE_V1 ? 'V1' : 'V2'})${RESET}`);
+    console.log(`\n${BOLD}⛓️  VeriCall Registry Inspector (${USE_V1 ? 'V1' : 'V3'})${RESET}`);
     console.log(`${DIM}Contract: ${CONTRACT}${RESET}`);
     console.log(`${DIM}Network:  Base Sepolia (chainId 84532)${RESET}`);
     console.log(`${DIM}Explorer: ${BASESCAN}/address/${CONTRACT}${RESET}\n`);
@@ -128,7 +128,7 @@ async function main() {
     functionName: 'owner',
   })) as string;
 
-  // V2: imageId + verifier (V1 had guestId)
+  // V3: imageId + verifier (V1 had guestId)
   let imageId = '';
   let verifierAddr = '';
   let guestId = '';
@@ -186,7 +186,7 @@ async function main() {
     const timestamp = Number(record.timestamp);
     const date = new Date(timestamp * 1000);
 
-    // V2: use on-chain getProvenData() for journal decoding
+    // V3: use on-chain getProvenData() for journal decoding
     let provenData = {
       notaryKeyFingerprint: '' as string,
       method: '' as string,
@@ -231,7 +231,6 @@ async function main() {
     const entry = {
       index: i,
       callId,
-      callerHash: record.callerHash,
       decision: DECISION_LABEL[decision]?.replace(/[^\w ]/g, '').trim() || 'UNKNOWN',
       decisionNum: decision,
       reason: record.reason,
@@ -269,13 +268,12 @@ async function main() {
       console.log(`  ${CYAN}Reason:${RESET}      ${record.reason}`);
       console.log(`  ${CYAN}Time:${RESET}        ${date.toISOString()}`);
       console.log(`  ${CYAN}Submitter:${RESET}   ${record.submitter}`);
-      console.log(`  ${CYAN}Caller Hash:${RESET} ${record.callerHash.slice(0, 18)}...`);
       if (!USE_V1) {
         console.log(`  ${CYAN}Verified:${RESET}    ${record.verified ? `${GREEN}✅ ZK Proof Verified${RESET}` : `${RED}❌ NOT Verified${RESET}`}`);
       }
       console.log('');
 
-      // V2: on-chain proven data (not heuristic)
+      // V3: on-chain proven data
       console.log(`  ${BOLD}📡 Proven Data (on-chain getProvenData):${RESET}`);
       console.log(`  ${CYAN}Method:${RESET}      ${provenData.method || 'N/A'}`);
       console.log(`  ${CYAN}URL:${RESET}         ${provenData.url || record.sourceUrl}`);
@@ -307,7 +305,7 @@ async function main() {
 
   if (JSON_MODE) {
     console.log(JSON.stringify({
-      version: USE_V1 ? 'v1' : 'v2',
+      version: USE_V1 ? 'v1' : 'v3',
       contract: CONTRACT,
       network: 'base-sepolia',
       chainId: 84532,

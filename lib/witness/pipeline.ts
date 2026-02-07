@@ -45,7 +45,6 @@ export interface WitnessRecord {
 export interface DecisionData {
   callId: string;
   timestamp: string;
-  callerHash: string;
   action: string;
   reason: string;
   confidence: number;
@@ -228,12 +227,10 @@ async function processWitnessAsync(
   try {
     const result = await submitDecisionOnChain({
       callSid: record.callSid,
-      callerPhone: data.callerHash,
       decision: decisionNum,
       reason: data.reason.slice(0, 200),
       zkProofSeal: zkProof,
       journalDataAbi,
-      sourceUrl: proofUrl,
     });
 
     updateStatus(record.id, 'on-chain', {

@@ -19,12 +19,10 @@ import { VERICALL_REGISTRY_ABI } from './abi';
 
 export interface OnChainSubmitParams {
   callSid: string;
-  callerPhone: string;        // raw phone number (hashed before sending)
   decision: number;            // 1=ACCEPT, 2=BLOCK, 3=RECORD
   reason: string;
   zkProofSeal: string;         // 0x-prefixed hex
   journalDataAbi: string;      // 0x-prefixed hex
-  sourceUrl: string;
 }
 
 export interface OnChainResult {
@@ -83,23 +81,16 @@ export async function submitDecisionOnChain(
     encodePacked(['string'], [`vericall_${params.callSid}_${Date.now()}`]),
   );
 
-  // Privacy: hash the phone number
-  const callerHash = keccak256(
-    encodePacked(['string'], [params.callerPhone]),
-  );
-
   const hash = await walletClient.writeContract({
     address,
     abi: VERICALL_REGISTRY_ABI,
     functionName: 'registerCallDecision',
     args: [
       callId,
-      callerHash,
       params.decision,
       params.reason,
       params.zkProofSeal as `0x${string}`,
       params.journalDataAbi as `0x${string}`,
-      params.sourceUrl,
     ],
   });
 

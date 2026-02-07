@@ -514,7 +514,6 @@ export class VoiceAISession {
       const witnessRecord = await createWitness(this.config.callSid, {
         callId: this.config.callSid,
         timestamp: new Date().toISOString(),
-        callerHash: hashPhoneNumber(this.config.from),
         action: this.decision!,
         reason: summary,
         confidence: 0.9,

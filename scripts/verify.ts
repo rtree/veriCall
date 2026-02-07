@@ -30,10 +30,10 @@ import { baseSepolia } from 'viem/chains';
 // ═══════════════════════════════════════════════════════════════
 
 const CONFIG = {
-  registry: '0x656ae703ca94cc4247493dec6f9af9c6f974ba82' as `0x${string}`,
-  mockVerifier: '0x9afb5f28e2317d75212a503eecf02dce4a7b6f0e' as `0x${string}`,
+  registry: '0x55d90c4c615884c2af3fd1b14e8d316610b66fd3' as `0x${string}`,
+  mockVerifier: '0xc6c4c01cdeec0c2f07575ea5c8c751fe4de2bcbe' as `0x${string}`,
   deployer: '0x485A974140923524a74B0D72aF117852F31B412D' as `0x${string}`,
-  deployBlock: 37335241n,
+  deployBlock: 37352827n,
   imageId: '0x6e251f4d993427d02a4199e1201f3b54462365d7c672a51be57f776d509b47eb',
   rpcUrl: 'https://sepolia.base.org',
   basescan: 'https://sepolia.basescan.org',
@@ -53,9 +53,12 @@ const REGISTRY_ABI = [
   { type: 'function', name: 'imageId', inputs: [], outputs: [{ name: '', type: 'bytes32' }], stateMutability: 'view' },
   { type: 'function', name: 'verifier', inputs: [], outputs: [{ name: '', type: 'address' }], stateMutability: 'view' },
   { type: 'function', name: 'callIds', inputs: [{ name: '', type: 'uint256' }], outputs: [{ name: '', type: 'bytes32' }], stateMutability: 'view' },
-  { type: 'function', name: 'getRecord', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: '', type: 'tuple', components: [{ name: 'callerHash', type: 'bytes32' }, { name: 'decision', type: 'uint8' }, { name: 'reason', type: 'string' }, { name: 'journalHash', type: 'bytes32' }, { name: 'zkProofSeal', type: 'bytes' }, { name: 'journalDataAbi', type: 'bytes' }, { name: 'sourceUrl', type: 'string' }, { name: 'timestamp', type: 'uint256' }, { name: 'submitter', type: 'address' }, { name: 'verified', type: 'bool' }] }], stateMutability: 'view' },
+  { type: 'function', name: 'getRecord', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: '', type: 'tuple', components: [{ name: 'decision', type: 'uint8' }, { name: 'reason', type: 'string' }, { name: 'journalHash', type: 'bytes32' }, { name: 'zkProofSeal', type: 'bytes' }, { name: 'journalDataAbi', type: 'bytes' }, { name: 'sourceUrl', type: 'string' }, { name: 'timestamp', type: 'uint256' }, { name: 'submitter', type: 'address' }, { name: 'verified', type: 'bool' }] }], stateMutability: 'view' },
   { type: 'function', name: 'getProvenData', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: 'notaryKeyFingerprint', type: 'bytes32' }, { name: 'method', type: 'string' }, { name: 'url', type: 'string' }, { name: 'proofTimestamp', type: 'uint256' }, { name: 'queriesHash', type: 'bytes32' }, { name: 'extractedData', type: 'string' }], stateMutability: 'view' },
   { type: 'function', name: 'verifyJournal', inputs: [{ name: 'callId', type: 'bytes32' }, { name: 'journalData', type: 'bytes' }], outputs: [{ name: '', type: 'bool' }], stateMutability: 'view' },
+  { type: 'function', name: 'EXPECTED_NOTARY_KEY_FP', inputs: [], outputs: [{ name: '', type: 'bytes32' }], stateMutability: 'view' },
+  { type: 'function', name: 'EXPECTED_QUERIES_HASH', inputs: [], outputs: [{ name: '', type: 'bytes32' }], stateMutability: 'view' },
+  { type: 'function', name: 'expectedUrlPrefix', inputs: [], outputs: [{ name: '', type: 'string' }], stateMutability: 'view' },
 ] as const;
 
 const MOCK_VERIFIER_ABI = [
@@ -66,7 +69,7 @@ const MOCK_VERIFIER_ABI = [
 // ─── Event ABI items for log lookups ───────────────────────────
 
 const CallDecisionRecordedEvent = parseAbiItem(
-  'event CallDecisionRecorded(bytes32 indexed callId, bytes32 indexed callerHash, uint8 decision, uint256 timestamp, address submitter)',
+  'event CallDecisionRecorded(bytes32 indexed callId, uint8 decision, uint256 timestamp, address submitter)',
 );
 const ProofVerifiedEvent = parseAbiItem(
   'event ProofVerified(bytes32 indexed callId, bytes32 imageId, bytes32 journalDigest)',
@@ -245,13 +248,13 @@ async function main(): Promise<void> {
   report.contractChecks.push(c1);
   if (!c1.passed) throw new Error(`No contract at ${CONFIG.registry} — cannot verify`);
 
-  // C2: Contract responds as VeriCallRegistryV2
+  // C2: Contract responds as VeriCallRegistryV3
   const stats = (await client.readContract({
     address: CONFIG.registry, abi: REGISTRY_ABI, functionName: 'getStats',
   })) as [bigint, bigint, bigint, bigint];
   const totalRecords = Number(stats[0]);
   const c2: CheckResult = {
-    id: 'C2', label: 'Contract responds as VeriCallRegistryV2',
+    id: 'C2', label: 'Contract responds as VeriCallRegistryV3',
     passed: true,
     detail: `getStats() → total=${totalRecords}, accepted=${stats[1]}, blocked=${stats[2]}, recorded=${stats[3]}`,
   };
@@ -850,7 +853,7 @@ function printSummary(report: VerificationReport): void {
   // Architecture one-liner
   console.log(`  ${C.B}Pipeline:${C.R}`);
   console.log(`  ${C.D}  Phone Call → AI Screening → Decision API → vlayer Web Proof (TLSNotary)${C.R}`);
-  console.log(`  ${C.D}  → RISC Zero ZK Proof (Groth16) → Base Sepolia VeriCallRegistryV2${C.R}`);
+  console.log(`  ${C.D}  → RISC Zero ZK Proof (Groth16) → Base Sepolia VeriCallRegistryV3${C.R}`);
   console.log('');
 }
 

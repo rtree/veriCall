@@ -42,7 +42,7 @@ export async function GET() {
       functionName: 'owner',
     })) as string;
 
-    // V2: imageId + verifier
+    // V3: imageId + verifier
     const imageId = (await client.readContract({
       address: CONTRACT,
       abi: VERICALL_REGISTRY_ABI,
@@ -78,7 +78,7 @@ export async function GET() {
       const decisionLabel = DECISION_LABELS[decision] || 'UNKNOWN';
       const timestamp = Number(record.timestamp);
 
-      // V2: use on-chain getProvenData() for journal decoding
+      // V3: use on-chain getProvenData() for journal decoding
       let provenData = {
         method: 'N/A',
         url: record.sourceUrl,
@@ -118,7 +118,6 @@ export async function GET() {
       records.push({
         index: i,
         callId,
-        callerHash: record.callerHash,
         decision: decisionLabel,
         decisionEmoji: DECISION_EMOJI[decisionLabel],
         reason: record.reason,
@@ -135,7 +134,7 @@ export async function GET() {
     }
 
     return NextResponse.json({
-      version: 'v2',
+      version: 'v3',
       contract: CONTRACT,
       network: 'Base Sepolia',
       chainId: 84532,

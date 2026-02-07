@@ -139,10 +139,8 @@ async function submitOnChain(
     console.log('   ⚠️ No wallet configured — simulating on-chain submission');
     
     const callId = keccak256(encodePacked(['string'], [`vericall_demo_${Date.now()}`]));
-    const callerHash = keccak256(encodePacked(['string'], ['+1234567890']));
     
     console.log('   Call ID:', callId.slice(0, 18) + '...');
-    console.log('   Caller Hash:', callerHash.slice(0, 18) + '...');
     console.log('   Decision: ACCEPT (1)');
     console.log('   ZK Proof Seal:', zkProof.length, 'hex chars');
     console.log('   Journal Data:', journalDataAbi.length, 'hex chars');
@@ -163,29 +161,25 @@ async function submitOnChain(
 
   // Construct call data
   const callId = keccak256(encodePacked(['string'], [`vericall_demo_${Date.now()}`]));
-  const callerHash = keccak256(encodePacked(['string'], ['+1234567890']));
   const decision = 1; // ACCEPT
   const reason = 'Demo: Binance ETH/USDC price proof verified via vlayer';
-  const sourceUrl = 'https://data-api.binance.vision/api/v3/ticker/price?symbol=ETHUSDC';
 
   console.log('   Contract:', contractAddress);
   console.log('   Submitter:', account.address);
   console.log('   Call ID:', callId.slice(0, 18) + '...');
   console.log('   Decision: ACCEPT');
 
-  // Submit transaction
+  // Submit transaction (V3: 5 args — no callerHash, no sourceUrl)
   const hash = await walletClient.writeContract({
     address: contractAddress,
     abi,
     functionName: 'registerCallDecision',
     args: [
       callId,
-      callerHash,
       decision,
       reason,
       zkProof as `0x${string}`,
       journalDataAbi as `0x${string}`,
-      sourceUrl,
     ],
   });
 

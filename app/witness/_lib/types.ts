@@ -36,7 +36,6 @@ export interface WitnessRecord {
 export interface DecisionData {
   callId: string;
   timestamp: string;
-  callerHash: string;  // プライバシー保護のためハッシュ化
   action: string;
   reason: string;
   confidence: number;

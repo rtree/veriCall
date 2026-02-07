@@ -26,9 +26,9 @@ import { baseSepolia } from 'viem/chains';
 // ═══════════════════════════════════════════════════════════════
 
 export const CONFIG = {
-  registry: '0x656ae703ca94cc4247493dec6f9af9c6f974ba82' as `0x${string}`,
-  mockVerifier: '0x9afb5f28e2317d75212a503eecf02dce4a7b6f0e' as `0x${string}`,
-  deployBlock: BigInt(37335241),
+  registry: '0x55d90c4c615884c2af3fd1b14e8d316610b66fd3' as `0x${string}`,
+  mockVerifier: '0xc6c4c01cdeec0c2f07575ea5c8c751fe4de2bcbe' as `0x${string}`,
+  deployBlock: BigInt(37352827),
   rpcUrl: 'https://sepolia.base.org',
   basescan: 'https://sepolia.basescan.org',
   chainId: 84532,
@@ -46,7 +46,7 @@ const REGISTRY_ABI = [
   { type: 'function', name: 'imageId', inputs: [], outputs: [{ name: '', type: 'bytes32' }], stateMutability: 'view' },
   { type: 'function', name: 'verifier', inputs: [], outputs: [{ name: '', type: 'address' }], stateMutability: 'view' },
   { type: 'function', name: 'callIds', inputs: [{ name: '', type: 'uint256' }], outputs: [{ name: '', type: 'bytes32' }], stateMutability: 'view' },
-  { type: 'function', name: 'getRecord', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: '', type: 'tuple', components: [{ name: 'callerHash', type: 'bytes32' }, { name: 'decision', type: 'uint8' }, { name: 'reason', type: 'string' }, { name: 'journalHash', type: 'bytes32' }, { name: 'zkProofSeal', type: 'bytes' }, { name: 'journalDataAbi', type: 'bytes' }, { name: 'sourceUrl', type: 'string' }, { name: 'timestamp', type: 'uint256' }, { name: 'submitter', type: 'address' }, { name: 'verified', type: 'bool' }] }], stateMutability: 'view' },
+  { type: 'function', name: 'getRecord', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: '', type: 'tuple', components: [{ name: 'decision', type: 'uint8' }, { name: 'reason', type: 'string' }, { name: 'journalHash', type: 'bytes32' }, { name: 'zkProofSeal', type: 'bytes' }, { name: 'journalDataAbi', type: 'bytes' }, { name: 'sourceUrl', type: 'string' }, { name: 'timestamp', type: 'uint256' }, { name: 'submitter', type: 'address' }, { name: 'verified', type: 'bool' }] }], stateMutability: 'view' },
   { type: 'function', name: 'getProvenData', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: 'notaryKeyFingerprint', type: 'bytes32' }, { name: 'method', type: 'string' }, { name: 'url', type: 'string' }, { name: 'proofTimestamp', type: 'uint256' }, { name: 'queriesHash', type: 'bytes32' }, { name: 'extractedData', type: 'string' }], stateMutability: 'view' },
   { type: 'function', name: 'verifyJournal', inputs: [{ name: 'callId', type: 'bytes32' }, { name: 'journalData', type: 'bytes' }], outputs: [{ name: '', type: 'bool' }], stateMutability: 'view' },
 ] as const;
@@ -57,7 +57,7 @@ const MOCK_VERIFIER_ABI = [
 ] as const;
 
 const CallDecisionRecordedEvent = parseAbiItem(
-  'event CallDecisionRecorded(bytes32 indexed callId, bytes32 indexed callerHash, uint8 decision, uint256 timestamp, address submitter)',
+  'event CallDecisionRecorded(bytes32 indexed callId, uint8 decision, uint256 timestamp, address submitter)',
 );
 const ProofVerifiedEvent = parseAbiItem(
   'event ProofVerified(bytes32 indexed callId, bytes32 imageId, bytes32 journalDigest)',

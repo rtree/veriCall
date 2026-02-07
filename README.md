@@ -152,7 +152,7 @@ veriCall/
 │   │   ├── vlayer-api.ts        # vlayer REST API client
 │   │   ├── on-chain.ts          # Base Sepolia TX submission (viem)
 │   │   ├── decision-store.ts    # Cloud SQL decision data store
-│   │   └── abi.ts               # VeriCallRegistryV2 ABI
+│   │   └── abi.ts               # VeriCallRegistryV3 ABI
 │   └── demo/
 │       └── event-bus.ts         # Global EventEmitter (globalThis singleton for SSE)
 │
@@ -178,11 +178,13 @@ veriCall/
 ├── scripts/
 │   ├── verify.ts                # Trust-minimized verification CLI (14 checks, --deep)
 │   ├── demo.ts                  # Live demo CLI (SSE stream viewer)
-│   ├── check-registry.ts        # CLI registry inspector (V1/V2)
-│   └── deploy-v2.ts             # V2 deployment script (with auto-sync)
+│   ├── check-registry.ts        # CLI registry inspector (V1/V3)
+│   ├── deploy-v3.ts             # V3 deployment script (with auto-sync + address patching)
+│   └── deploy-v2.ts             # V2 deployment script (historical)
 │
 ├── contracts/
-│   ├── VeriCallRegistryV2.sol   # V2 Solidity contract (with ZK verification)
+│   ├── VeriCallRegistryV3.sol   # V3 Solidity contract (journal-bound decision integrity, current)
+│   ├── VeriCallRegistryV2.sol   # V2 Solidity contract (historical)
 │   ├── RiscZeroMockVerifier.sol # Mock Verifier for development
 │   ├── interfaces/
 │   │   └── IRiscZeroVerifier.sol # RISC Zero standard interface
@@ -211,7 +213,6 @@ At the moment the AI makes a decision, VeriCall captures everything needed for v
 interface DecisionData {
   callId: string;           // Unique call identifier
   timestamp: string;        // ISO 8601 timestamp
-  callerHash: string;       // SHA-256 of caller's phone number (privacy)
   systemPromptHash: string; // SHA-256 of the AI's ruleset (SYSTEM_PROMPT)
   transcript: string;       // Full conversation transcript
   action: 'BLOCK' | 'RECORD';
@@ -275,29 +276,34 @@ The `journalDataAbi` is an ABI-encoded tuple containing:
 
 #### Step 4: On-Chain Registration + ZK Verification (Base Sepolia)
 
-The ZK proof and journal are submitted to **VeriCallRegistryV2** on Base Sepolia. The contract performs on-chain ZK proof verification before storing the record:
+The ZK proof and journal are submitted to **VeriCallRegistryV3** on Base Sepolia. The contract performs on-chain ZK proof verification with journal-bound decision integrity before storing the record:
 
 ```
-registerCallDecision(callId, callerHash, decision, reason, seal, journalDataAbi, sourceUrl)
+registerCallDecision(callId, decision, reason, zkProofSeal, journalDataAbi)
     │
     ├─ Step A: ZK Proof Verification (on-chain)
     │   verifier.verify(seal, imageId, sha256(journalDataAbi))
     │   └─ Calls IRiscZeroVerifier — reverts if proof is invalid
     │   └─ emit ProofVerified(callId, imageId, journalDigest)
     │
-    ├─ Step B: Journal Decode & Validation
+    ├─ Step B: Journal Decode & Validation (V3 immutable checks)
     │   abi.decode(journalDataAbi) → 6 fields:
-    │   ├─ notaryKeyFingerprint ≠ bytes32(0)    ← TLSNotary key exists
-    │   ├─ method == "GET"                       ← Valid HTTP method
-    │   ├─ bytes(url).length > 0                 ← URL exists
-    │   └─ bytes(extractedData).length > 0       ← Extracted data exists
+    │   ├─ notaryKeyFingerprint == EXPECTED_NOTARY_KEY_FP  ← immutable check
+    │   ├─ method == "GET"                                 ← Valid HTTP method
+    │   ├─ queriesHash == EXPECTED_QUERIES_HASH            ← immutable check
+    │   ├─ URL starts with expectedUrlPrefix               ← byte-by-byte check
+    │   └─ bytes(extractedData).length > 0                 ← Extracted data exists
     │
-    ├─ Step C: Immutable Record Storage
-    │   records[callId] = CallRecord{ ..., verified: true }
+    ├─ Step C: Decision–Journal Binding (V3)
+    │   Reconstruct '["BLOCK","reason"]' from args
+    │   └─ keccak256(reconstructed) == keccak256(extractedData) ← prevents tampering
+    │
+    ├─ Step D: Immutable Record Storage
+    │   records[callId] = CallRecord{ ..., sourceUrl: url (from journal), verified: true }
     │   └─ journalHash = keccak256(journalDataAbi) stored as commitment
     │
-    └─ Step D: Event Emission
-        └─ emit CallDecisionRecorded(callId, callerHash, decision, timestamp, submitter)
+    └─ Step E: Event Emission
+        └─ emit CallDecisionRecorded(callId, decision, timestamp, submitter)
 ```
 
 **Key design**: The `verifier` is injected via constructor (`IRiscZeroVerifier` interface), enabling a seamless upgrade path from MockVerifier (development) to RiscZeroVerifierRouter (production Groth16) without changing contract code.
@@ -311,22 +317,23 @@ registerCallDecision(callId, callerHash, decision, reason, seal, journalDataAbi,
 | **The AI ruleset** | `systemPromptHash` — anyone can check the hash matches the company's published rules |
 | **The input** | `transcriptHash` — the conversation that was fed to the AI is hashed and recorded |
 | **The decision is authentic** | Web Proof via TLSNotary — cryptographic proof that VeriCall's Decision API genuinely returned this decision and reason |
-| **The output wasn't tampered** | ZK Proof — compressed, on-chain verifiable attestation via RISC Zero |
+| **The output wasn't tampered** | ZK Proof + Decision–Journal binding — on-chain keccak256 comparison ensures decision/reason match the proven journal |
 | **When it happened** | `tlsTimestamp` from the TLS session itself (not self-reported by the company) |
-| **Privacy preserved** | Caller phone is hashed; API keys are redacted; ZK proof hides raw data |
+| **Privacy preserved** | No phone number data on-chain; API keys are redacted; ZK proof hides raw data |
 
 ### Verification Flow (for a caller or auditor)
 
 ```
 1. Caller receives a callId reference after the call
-2. Look up: VeriCallRegistryV2.getRecord(callId) on Base Sepolia
+2. Look up: VeriCallRegistryV3.getRecord(callId) on Base Sepolia
 3. Check: record.verified == true (ZK proof was validated on-chain)
-4. Read:  VeriCallRegistryV2.getProvenData(callId) → decoded journal fields
+4. Read:  VeriCallRegistryV3.getProvenData(callId) → decoded journal fields
 5. Check: Does the extractedData contain the expected decision and reason?
-6. Check: Does the sourceUrl point to the expected VeriCall Decision API?
+6. Check: Does the sourceUrl (from journal) point to the expected VeriCall Decision API?
 7. Optionally: verifyJournal(callId, journalDataAbi) to confirm journal integrity
 8. Result: Cryptographic proof that VeriCall's AI made this specific decision,
-           as attested by TLSNotary and verified by ZK proof on-chain
+           as attested by TLSNotary and verified by ZK proof on-chain,
+           with decision-journal binding preventing post-proof tampering
 ```
 
 ## Trust-Minimized Verification
@@ -515,8 +522,8 @@ gcloud run deploy vericall \
 | vlayer Web Proof generation | ✅ Implemented |
 | vlayer ZK Proof compression | ✅ Implemented |
 | On-chain proof submission (Base Sepolia) | ✅ Implemented |
-| On-chain ZK verification (VeriCallRegistryV2) | ✅ Implemented (MockVerifier) |
-| CLI registry inspector (V1/V2) | ✅ Implemented |
+| On-chain ZK verification (VeriCallRegistryV3) | ✅ Implemented (MockVerifier + journal binding) |
+| CLI registry inspector (V1/V3) | ✅ Implemented |
 | Explorer API (`/api/explorer`) | ✅ Implemented |
 | Single Source of Truth (deployment.json) | ✅ Implemented |
 | Trust-minimized verification page (`/verify`) | ✅ Implemented (12 checks, client-side) |

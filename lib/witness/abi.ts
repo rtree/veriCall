@@ -1,10 +1,11 @@
 /**
  * VeriCallRegistry Contract ABIs
  * V1: 0xe454ca755219310b2728d39db8039cbaa7abc3b8 (Base Sepolia) — Phase 1
- * V2: Deployed via scripts/deploy-v2.ts — Phase 2 (MockVerifier + verify + journal decode)
+ * V2: 0x656ae703ca94cc4247493dec6f9af9c6f974ba82 (Base Sepolia) — Phase 2 (MockVerifier + verify)
+ * V3: 0x55d90c4c615884c2af3fd1b14e8d316610b66fd3 (Base Sepolia) — Phase 3 (journal-bound decision integrity)
  */
 
-// ─── V2 ABI (Active) ──────────────────────────────────────────
+// ─── V3 ABI (Active) ──────────────────────────────────────────
 
 export const VERICALL_REGISTRY_ABI = [
   {
@@ -12,6 +13,9 @@ export const VERICALL_REGISTRY_ABI = [
     inputs: [
       { name: '_verifier', type: 'address' },
       { name: '_imageId', type: 'bytes32' },
+      { name: '_expectedNotaryFP', type: 'bytes32' },
+      { name: '_expectedQueriesHash', type: 'bytes32' },
+      { name: '_expectedUrlPrefix', type: 'string' },
     ],
     stateMutability: 'nonpayable',
   },
@@ -20,12 +24,10 @@ export const VERICALL_REGISTRY_ABI = [
     name: 'registerCallDecision',
     inputs: [
       { name: 'callId', type: 'bytes32' },
-      { name: 'callerHash', type: 'bytes32' },
       { name: 'decision', type: 'uint8' },
       { name: 'reason', type: 'string' },
       { name: 'zkProofSeal', type: 'bytes' },
       { name: 'journalDataAbi', type: 'bytes' },
-      { name: 'sourceUrl', type: 'string' },
     ],
     outputs: [],
     stateMutability: 'nonpayable',
@@ -39,7 +41,6 @@ export const VERICALL_REGISTRY_ABI = [
         name: '',
         type: 'tuple',
         components: [
-          { name: 'callerHash', type: 'bytes32' },
           { name: 'decision', type: 'uint8' },
           { name: 'reason', type: 'string' },
           { name: 'journalHash', type: 'bytes32' },
@@ -120,6 +121,27 @@ export const VERICALL_REGISTRY_ABI = [
   },
   {
     type: 'function',
+    name: 'EXPECTED_NOTARY_KEY_FP',
+    inputs: [],
+    outputs: [{ name: '', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'EXPECTED_QUERIES_HASH',
+    inputs: [],
+    outputs: [{ name: '', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'expectedUrlPrefix',
+    inputs: [],
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     name: 'updateImageId',
     inputs: [{ name: '_imageId', type: 'bytes32' }],
     outputs: [],
@@ -144,7 +166,6 @@ export const VERICALL_REGISTRY_ABI = [
     name: 'CallDecisionRecorded',
     inputs: [
       { name: 'callId', type: 'bytes32', indexed: true },
-      { name: 'callerHash', type: 'bytes32', indexed: true },
       { name: 'decision', type: 'uint8', indexed: false },
       { name: 'timestamp', type: 'uint256', indexed: false },
       { name: 'submitter', type: 'address', indexed: false },
@@ -170,6 +191,16 @@ export const VERICALL_REGISTRY_ABI = [
     ],
     anonymous: false,
   },
+  // ── Errors ──
+  { type: 'error', name: 'AlreadyRegistered', inputs: [] },
+  { type: 'error', name: 'InvalidDecision', inputs: [] },
+  { type: 'error', name: 'InvalidNotaryKeyFingerprint', inputs: [] },
+  { type: 'error', name: 'InvalidHttpMethod', inputs: [] },
+  { type: 'error', name: 'InvalidQueriesHash', inputs: [] },
+  { type: 'error', name: 'InvalidUrl', inputs: [] },
+  { type: 'error', name: 'EmptyExtractedData', inputs: [] },
+  { type: 'error', name: 'DecisionMismatch', inputs: [] },
+  { type: 'error', name: 'ZKProofVerificationFailed', inputs: [] },
 ] as const;
 
 // ─── MockVerifier ABI ──────────────────────────────────────────
