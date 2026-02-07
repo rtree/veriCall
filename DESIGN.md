@@ -601,10 +601,10 @@ struct CallRecord {
 
 vlayer offers two integration paths:
 
-| Approach | Description | Status |
-|----------|-------------|--------|
-| **Solidity Prover/Verifier** | Write a Solidity contract that extends `vlayer.Prover`, pair with a `vlayer.Verifier` contract. The SDK handles proof generation and on-chain verification via a tightly coupled contract pair. | Requires vlayer SDK v0.1.0-alpha.12 toolchain, `forge-vlayer`, and a specific project structure. Documentation covers this path extensively. |
-| **REST API** | Call vlayer's public Web Prover and ZK Prover endpoints directly. Handle the proof lifecycle in application code. Write your own verifier contract using RISC Zero's `IRiscZeroVerifier` interface. | Fully functional. Uses `POST /api/v1/prove` and `POST /api/v0/compress-web-proof`. |
+| Approach | Description | Best For |
+|----------|-------------|----------|
+| **Solidity Prover/Verifier** | Write a Solidity contract that extends `vlayer.Prover`, pair with a `vlayer.Verifier` contract. The SDK handles proof generation and on-chain verification via a tightly coupled contract pair. | Projects where the SDK's default verification logic is sufficient and the proving entity is an EOA. Tightly integrated toolchain (`forge-vlayer`). |
+| **REST API** | Call vlayer's public Web Prover and ZK Prover endpoints directly. Handle the proof lifecycle in application code. Write your own verifier contract using RISC Zero's `IRiscZeroVerifier` interface. | Server-driven pipelines, custom on-chain validation logic, HTTP endpoint attestation. Uses `POST /api/v1/prove` and `POST /api/v0/compress-web-proof`. |
 
 **VeriCall uses the REST API approach.** Here's why:
 
@@ -650,7 +650,7 @@ The MockVerifier is only one of many verification layers. The following checks *
 | 13 | **Decision validity** | Decision enum is not UNKNOWN | `decision == UNKNOWN → revert` |
 | 14 | **Journal hash commitment** | `keccak256(journalDataAbi)` stored as `journalHash` | Enables offline re-verification |
 
-**Result**: 14 on-chain checks run on every registration. Even with the MockVerifier, a fake or malformed journal will be rejected by checks 3–11. The only thing the MockVerifier "trusts" is the seal format (check 1) — all other checks are real.
+**Result**: Every registration passes through journal decode, TLS metadata validation, decision–journal binding, and duplicate prevention — all on-chain. Even with the MockVerifier, a fake or malformed journal will be rejected by checks 3–11. The only thing the MockVerifier "trusts" is the seal format (check 1) — all other checks are real.
 
 #### Production Migration Path
 
@@ -671,9 +671,9 @@ The MockVerifier is the standard RISC Zero development workflow, documented in t
 - **RISC Zero's [`risc0-foundry-template`](https://github.com/risc0/risc0-foundry-template)** ships with MockVerifier by default and documents it as the standard local/testnet deployment pattern
 - **vlayer's own test suites** use `SELECTOR_FAKE = 0xFFFFFFFF` throughout their SDK examples
 
-VeriCall's contract is **already production-ready by design** — the `verifier` is an `IRiscZeroVerifier` interface injected via constructor. The 13 real on-chain checks (journal integrity, notary validation, URL binding, decision matching, hash presence) are identical whether the verifier is Mock or Groth16. No contract code changes are needed for the upgrade.
+VeriCall's contract is **already production-ready by design** — the `verifier` is an `IRiscZeroVerifier` interface injected via constructor. All verification checks (journal integrity, notary validation, URL binding, decision matching, hash presence) are identical whether the verifier is Mock or Groth16. No contract code changes are needed for the upgrade.
 
-> **Future improvement**: Production Groth16 verification activates when vlayer's ZK Prover transitions from development mode (`SELECTOR_FAKE = 0xFFFFFFFF`, 36-byte seals) to production mode (real RISC Zero Groth16 seals, ~256 bytes). This is controlled by vlayer's prover infrastructure — when they enable production proving, VeriCall upgrades by deploying a new V3 instance pointing to RISC Zero's `RiscZeroVerifierRouter`. The 13 existing checks continue unchanged; only check #1 gains full cryptographic binding.
+> **Future improvement**: Production Groth16 verification activates when vlayer's ZK Prover transitions from development mode (`SELECTOR_FAKE = 0xFFFFFFFF`, 36-byte seals) to production mode (real RISC Zero Groth16 seals, ~256 bytes). This is controlled by vlayer's prover infrastructure — when they enable production proving, VeriCall upgrades by deploying a new V3 instance pointing to RISC Zero's `RiscZeroVerifierRouter`. All existing verification continues unchanged; only check #1 gains full cryptographic binding.
 
 ---
 

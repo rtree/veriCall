@@ -47,7 +47,9 @@ This pattern — **proving that an AI made a specific decision given specific in
 | 🛡️ Content Moderation | AI fairly applied community guidelines |
 | ⚖️ Insurance Claims | AI fairly processed or denied a claim |
 
-VeriCall is the **reference implementation** — phone calls are the first use case, but the verification framework is designed to be reusable.
+VeriCall is a **working proof-of-concept** for this pattern — phone calls are the first use case, but the verification framework (Web Proof → ZK Proof → on-chain journal validation) is designed to be reusable for any AI decision pipeline.
+
+> 🔍 **You don't need to trust VeriCall.** Every on-chain record can be independently verified — [from your browser](/verify) or [from the CLI](scripts/verify.ts). No API keys, no VeriCall servers, just you and the chain. See [Trust-Minimized Verification](#trust-minimized-verification).
 
 ## Architecture
 
@@ -301,6 +303,9 @@ registerCallDecision(callId, decision, reason, zkProofSeal, journalDataAbi)
     ├─ Step C: Decision–Journal Binding (V3, direct string comparison)
     │   keccak256(decision) == keccak256(provenDecision)   ← decision integrity
     │   keccak256(reason) == keccak256(provenReason)        ← reason integrity
+    │   (Why: decision/reason are stored as typed fields for queryability,
+    │    but submitted separately from the journal. This binding prevents
+    │    a submitter from passing a valid proof with mismatched arguments.)
     │
     ├─ Step D: Immutable Record Storage
     │   records[callId] = CallRecord{ ..., sourceUrl: url (from journal), verified: true }
@@ -323,7 +328,7 @@ registerCallDecision(callId, decision, reason, zkProofSeal, journalDataAbi)
 | **The decision is authentic** | Web Proof via TLSNotary — cryptographic proof that VeriCall's Decision API genuinely returned this decision and reason |
 | **The output wasn't tampered** | ZK Proof + Decision–Journal binding — on-chain keccak256 comparison ensures submitted decision/reason match `provenDecision`/`provenReason` from the journal |
 | **When it happened** | `tlsTimestamp` from the TLS session itself (not self-reported by the company) |
-| **Privacy preserved** | No phone number data on-chain; API keys are redacted; ZK proof hides raw data |
+| **Privacy-conscious** | Phone numbers never go on-chain. Conversation content is hashed (`transcriptHash`), not stored in plaintext. Note: the AI's reasoning (`provenReason`) is stored in plaintext — this is intentional, as accountability requires the reasoning to be publicly auditable. |
 
 ### Verification Flow (for a caller or auditor)
 
@@ -528,7 +533,7 @@ gcloud run deploy vericall \
 | vlayer Web Proof generation | ✅ [REST API](DESIGN.md#38-why-rest-api-not-solidity-proververifier) |
 | vlayer ZK Proof compression | ✅ [REST API](DESIGN.md#38-why-rest-api-not-solidity-proververifier) |
 | On-chain proof submission (Base Sepolia) | ✅ Implemented |
-| On-chain ZK verification (VeriCallRegistryV3) | ✅ [14 on-chain checks, 9-field journal](DESIGN.md#39-verifier-honesty-mockverifier-vs-production) |
+| On-chain ZK verification (VeriCallRegistryV3) | ✅ [Journal-bound integrity, 9-field decode](DESIGN.md#39-verifier-honesty-mockverifier-vs-production) |
 | systemPromptHash / transcriptHash in journal | ✅ Proven via JMESPath extraction |
 | Trust-minimized verification page (`/verify`) | ✅ 12 checks, client-side |
 | Trust-minimized verification CLI (`scripts/verify.ts`) | ✅ 14 checks, `--deep` mode |
@@ -544,7 +549,7 @@ These improvements are ready on VeriCall's side — activation depends on upstre
 
 | Improvement | Condition | VeriCall Change Required |
 |-------------|-----------|--------------------------|
-| **Production Groth16 verification** | vlayer ZK Prover transitions from dev mode (`0xFFFFFFFF` seals) to production Groth16 | Deploy new V3 instance with `RiscZeroVerifierRouter` in constructor. No code changes — [13 existing checks unchanged](DESIGN.md#39-verifier-honesty-mockverifier-vs-production). |
+| **Production Groth16 verification** | vlayer ZK Prover transitions from dev mode (`0xFFFFFFFF` seals) to production Groth16 | Deploy new V3 instance with `RiscZeroVerifierRouter` in constructor. No code changes — [all existing verification unchanged](DESIGN.md#39-verifier-honesty-mockverifier-vs-production). |
 | **Solidity Prover/Verifier SDK** | vlayer SDK adds custom journal validation hooks in generated Verifier | Migrate from REST API to SDK. Proof data is identical — [only the integration layer changes](DESIGN.md#38-why-rest-api-not-solidity-proververifier). |
 
 ### Future
@@ -557,9 +562,9 @@ These improvements are ready on VeriCall's side — activation depends on upstre
 
 ### Architecture Decisions
 
-**Why REST API?** VeriCall uses vlayer's REST API (`/api/v1/prove`, `/api/v0/compress-web-proof`) — the native interface for Web Proofs (HTTP attestation via TLSNotary). This is the architecturally optimal choice for proving HTTP API responses, and it enables a custom verifier contract (`VeriCallRegistryV3`) with 14 on-chain checks that vlayer's auto-generated Verifier does not support. → [Full rationale](DESIGN.md#38-why-rest-api-not-solidity-proververifier)
+**Why REST API?** Web Proofs are HTTP attestations — vlayer's REST API (`/api/v1/prove`) is the native interface for this. Using it directly lets VeriCall write a custom verifier contract with journal-bound decision integrity, notary fingerprint validation, URL prefix binding, and other checks that vlayer's auto-generated Verifier does not support. → [Full rationale](DESIGN.md#38-why-rest-api-not-solidity-proververifier)
 
-**Why MockVerifier? (13 of 14 checks real)** Every `registerCallDecision()` runs 14 on-chain checks. 13 are fully real today — journal ABI decode, notary fingerprint, URL prefix binding, queriesHash, systemPromptHash/transcriptHash presence, decision-journal keccak256 binding. The one deferred check (Groth16 seal verification) follows [RISC Zero's standard development pattern](https://github.com/risc0/risc0-foundry-template). VeriCall's contract is already production-ready — the upgrade is a constructor argument swap. → [Full 14-check breakdown](DESIGN.md#39-verifier-honesty-mockverifier-vs-production)
+**On-chain verification depth** Every `registerCallDecision()` performs journal ABI decode (9 fields), notary fingerprint check, HTTP method validation, URL prefix binding, queriesHash validation, systemPromptHash/transcriptHash presence checks, and decision–journal keccak256 binding — all fully real and running on-chain today. The contract is production-ready by design: the `verifier` is an `IRiscZeroVerifier` interface injected via constructor. The only component awaiting upstream activation is Groth16 seal verification, which follows [RISC Zero's standard development pattern](https://github.com/risc0/risc0-foundry-template). → [Full breakdown](DESIGN.md#39-verifier-honesty-mockverifier-vs-production)
 
 ## License
 
