@@ -61,7 +61,7 @@ const REGISTRY_ABI = [
   { type: 'function', name: 'callIds', inputs: [{ name: '', type: 'uint256' }], outputs: [{ name: '', type: 'bytes32' }], stateMutability: 'view' },
   { type: 'function', name: 'getRecord', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: '', type: 'tuple', components: [{ name: 'callerHash', type: 'bytes32' }, { name: 'decision', type: 'uint8' }, { name: 'reason', type: 'string' }, { name: 'journalHash', type: 'bytes32' }, { name: 'zkProofSeal', type: 'bytes' }, { name: 'journalDataAbi', type: 'bytes' }, { name: 'sourceUrl', type: 'string' }, { name: 'timestamp', type: 'uint256' }, { name: 'submitter', type: 'address' }, { name: 'verified', type: 'bool' }] }], stateMutability: 'view' },
   { type: 'function', name: 'getProvenData', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: 'notaryKeyFingerprint', type: 'bytes32' }, { name: 'method', type: 'string' }, { name: 'url', type: 'string' }, { name: 'proofTimestamp', type: 'uint256' }, { name: 'queriesHash', type: 'bytes32' }, { name: 'extractedData', type: 'string' }], stateMutability: 'view' },
-  { type: 'function', name: 'verifyJournal', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: '', type: 'bool' }], stateMutability: 'view' },
+  { type: 'function', name: 'verifyJournal', inputs: [{ name: 'callId', type: 'bytes32' }, { name: 'journalData', type: 'bytes' }], outputs: [{ name: '', type: 'bool' }], stateMutability: 'view' },
 ] as const;
 
 const MOCK_VERIFIER_ABI = [
@@ -270,6 +270,25 @@ function useDemo() {
 
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+// Chunked getLogs — public RPCs often reject large block ranges
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function chunkedGetLogs(client: any, params: { address: `0x${string}`; event: any; args: any; fromBlock: bigint; toBlock: 'latest' | bigint }, chunkSize = BigInt(5000)) {
+  const latestBlock = await client.getBlockNumber();
+  const to = params.toBlock === 'latest' ? latestBlock : params.toBlock;
+  const from = params.fromBlock;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const allLogs: any[] = [];
+  for (let start = from; start <= to; start += chunkSize) {
+    const end = start + chunkSize - BigInt(1) > to ? to : start + chunkSize - BigInt(1);
+    try {
+      const logs = await client.getLogs({ ...params, fromBlock: start, toBlock: end });
+      allLogs.push(...logs);
+      if (allLogs.length > 0) return allLogs; // found, early return
+    } catch { /* chunk failed, continue */ }
+  }
+  return allLogs;
+}
+
 export default function DemoPage() {
   const { phase, logs, connected, error, lastTxHash, lastBlockNumber, turnCount, addLog } = useDemo();
   const logEndRef = useRef<HTMLDivElement>(null);
@@ -372,7 +391,7 @@ export default function DemoPage() {
       // V6: Registration TX
       let eventTxHash: string | null = null;
       try {
-        const evLogs = await client.getLogs({ address: VERIFY_CONFIG.registry, event: CallDecisionRecordedEvent, args: { callId }, fromBlock: VERIFY_CONFIG.deployBlock, toBlock: 'latest' });
+        const evLogs = await chunkedGetLogs(client, { address: VERIFY_CONFIG.registry, event: CallDecisionRecordedEvent, args: { callId }, fromBlock: VERIFY_CONFIG.deployBlock, toBlock: 'latest' });
         if (evLogs.length > 0) eventTxHash = evLogs[0].transactionHash;
       } catch { /* */ }
       eventTxHash ? ok('V6', `Registration TX: ${eventTxHash.slice(0, 10)}…${eventTxHash.slice(-6)}`) : ng('V6', 'Registration TX not found');
@@ -381,7 +400,7 @@ export default function DemoPage() {
       // V7: ProofVerified event
       let proofEvent = false;
       try {
-        const evLogs = await client.getLogs({ address: VERIFY_CONFIG.registry, event: ProofVerifiedEvent, args: { callId }, fromBlock: VERIFY_CONFIG.deployBlock, toBlock: 'latest' });
+        const evLogs = await chunkedGetLogs(client, { address: VERIFY_CONFIG.registry, event: ProofVerifiedEvent, args: { callId }, fromBlock: VERIFY_CONFIG.deployBlock, toBlock: 'latest' });
         proofEvent = evLogs.length > 0;
       } catch { /* */ }
       proofEvent ? ok('V7', 'ProofVerified event — ZK verification confirmed') : ng('V7', 'ProofVerified event not found');

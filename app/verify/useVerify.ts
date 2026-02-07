@@ -255,6 +255,28 @@ export function useVerify() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// Chunked getLogs (public RPCs reject large block ranges)
+// ═══════════════════════════════════════════════════════════════
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function chunkedGetLogs(client: any, params: { address: `0x${string}`; event: any; args: any; fromBlock: bigint; toBlock: 'latest' | bigint }, chunkSize = BigInt(5000)) {
+  const latestBlock = await client.getBlockNumber();
+  const to = params.toBlock === 'latest' ? latestBlock : params.toBlock;
+  const from = params.fromBlock;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const allLogs: any[] = [];
+  for (let start = from; start <= to; start += chunkSize) {
+    const end = start + chunkSize - BigInt(1) > to ? to : start + chunkSize - BigInt(1);
+    try {
+      const logs = await client.getLogs({ ...params, fromBlock: start, toBlock: end });
+      allLogs.push(...logs);
+      if (allLogs.length > 0) return allLogs;
+    } catch { /* chunk failed, continue */ }
+  }
+  return allLogs;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Per-Record Verification
 // ═══════════════════════════════════════════════════════════════
 
@@ -353,10 +375,10 @@ async function verifyRecord(
     detail: provenOk ? `${provenData.method} — data extracted` : 'Invalid or missing',
   });
 
-  // V6: TX from events
+  // V6: TX from events (chunked to avoid RPC range limits)
   let txHash: string | null = null;
   try {
-    const logs = await client.getLogs({
+    const logs = await chunkedGetLogs(client, {
       address: CONFIG.registry, event: CallDecisionRecordedEvent,
       args: { callId }, fromBlock: CONFIG.deployBlock, toBlock: 'latest',
     });
@@ -369,10 +391,10 @@ async function verifyRecord(
     detailLink: txHash ? `${CONFIG.basescan}/tx/${txHash}` : undefined,
   });
 
-  // V7: ProofVerified event
+  // V7: ProofVerified event (chunked to avoid RPC range limits)
   let proofEventFound = false;
   try {
-    const logs = await client.getLogs({
+    const logs = await chunkedGetLogs(client, {
       address: CONFIG.registry, event: ProofVerifiedEvent,
       args: { callId }, fromBlock: CONFIG.deployBlock, toBlock: 'latest',
     });
