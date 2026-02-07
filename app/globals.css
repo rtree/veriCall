@@ -38,3 +38,8 @@ pre {
   border-radius: 8px;
   overflow: auto;
 }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

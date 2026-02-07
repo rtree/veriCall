@@ -16,6 +16,15 @@ export default function Home() {
         }}>
           📊 Monitoring
         </Link>
+        <Link href="/verify" style={{ 
+          background: '#0a2a0a', 
+          padding: '0.75rem 1.5rem', 
+          borderRadius: '8px',
+          border: '1px solid #22c55e40',
+          color: '#22c55e',
+        }}>
+          ⛓️ Verify On-Chain
+        </Link>
       </nav>
 
       <section style={{ marginBottom: '2rem' }}>
