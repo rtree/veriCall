@@ -8,6 +8,9 @@
 
 **Verifiable AI Call Screening — Proving Fairness On-Chain**
 
+<img width="1764" height="1039" alt="image" src="https://github.com/user-attachments/assets/46d9b0ca-4f05-4421-b9ff-fdf643d71228" />
+
+
 ## The Problem
 
 Companies increasingly use AI to screen incoming phone calls — blocking spam, scams, and unwanted sales while forwarding legitimate business calls. But this creates a fundamental **trust problem**:
