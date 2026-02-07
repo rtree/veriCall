@@ -47,9 +47,9 @@ const BASESCAN = 'https://sepolia.basescan.org';
 
 // ── Verification config (self-contained, same as /verify) ────
 const VERIFY_CONFIG = {
-  registry: '0x55d90c4c615884c2af3fd1b14e8d316610b66fd3' as `0x${string}`,
-  mockVerifier: '0xc6c4c01cdeec0c2f07575ea5c8c751fe4de2bcbe' as `0x${string}`,
-  deployBlock: BigInt(37352827),
+  registry: '0x9beb87effdac68baf13b505b7e1515f9d43e6ad2' as `0x${string}`,
+  mockVerifier: '0xd447c1342f7350ec5f0af60f8ed98e33b8c78ea1' as `0x${string}`,
+  deployBlock: BigInt(37354216),
   rpcUrl: 'https://sepolia.base.org',
 } as const;
 
@@ -60,7 +60,7 @@ const REGISTRY_ABI = [
   { type: 'function', name: 'verifier', inputs: [], outputs: [{ name: '', type: 'address' }], stateMutability: 'view' },
   { type: 'function', name: 'callIds', inputs: [{ name: '', type: 'uint256' }], outputs: [{ name: '', type: 'bytes32' }], stateMutability: 'view' },
   { type: 'function', name: 'getRecord', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: '', type: 'tuple', components: [{ name: 'decision', type: 'uint8' }, { name: 'reason', type: 'string' }, { name: 'journalHash', type: 'bytes32' }, { name: 'zkProofSeal', type: 'bytes' }, { name: 'journalDataAbi', type: 'bytes' }, { name: 'sourceUrl', type: 'string' }, { name: 'timestamp', type: 'uint256' }, { name: 'submitter', type: 'address' }, { name: 'verified', type: 'bool' }] }], stateMutability: 'view' },
-  { type: 'function', name: 'getProvenData', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: 'notaryKeyFingerprint', type: 'bytes32' }, { name: 'method', type: 'string' }, { name: 'url', type: 'string' }, { name: 'proofTimestamp', type: 'uint256' }, { name: 'queriesHash', type: 'bytes32' }, { name: 'extractedData', type: 'string' }], stateMutability: 'view' },
+  { type: 'function', name: 'getProvenData', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: 'notaryKeyFingerprint', type: 'bytes32' }, { name: 'method', type: 'string' }, { name: 'url', type: 'string' }, { name: 'proofTimestamp', type: 'uint256' }, { name: 'queriesHash', type: 'bytes32' }, { name: 'provenDecision', type: 'string' }, { name: 'provenReason', type: 'string' }], stateMutability: 'view' },
   { type: 'function', name: 'verifyJournal', inputs: [{ name: 'callId', type: 'bytes32' }, { name: 'journalData', type: 'bytes' }], outputs: [{ name: '', type: 'bool' }], stateMutability: 'view' },
 ] as const;
 
@@ -383,7 +383,7 @@ export default function DemoPage() {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const pd = (await client.readContract({ address: VERIFY_CONFIG.registry, abi: REGISTRY_ABI, functionName: 'getProvenData', args: [callId] })) as any;
-        provenOk = pd[0] !== '0x' + '0'.repeat(64) && pd[1] === 'GET' && (pd[2] as string).length > 0 && (pd[5] as string).length > 0;
+        provenOk = pd[0] !== '0x' + '0'.repeat(64) && pd[1] === 'GET' && (pd[2] as string).length > 0 && (pd[5] as string).length > 0 && (pd[6] as string).length > 0;
       } catch { /* */ }
       provenOk ? ok('V5', 'TLSNotary metadata valid — GET, data extracted') : ng('V5', 'TLSNotary metadata invalid or missing');
       await wait(120);

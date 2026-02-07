@@ -84,12 +84,12 @@ const SHOW_CURSOR = `${ESC}[?25h`;
 // ─── On-chain verification (post-COMPLETE) ───────────────────
 
 const VERIFY_CONFIG = {
-  registry: '0x55d90c4c615884c2af3fd1b14e8d316610b66fd3' as `0x${string}`,
-  mockVerifier: '0xc6c4c01cdeec0c2f07575ea5c8c751fe4de2bcbe' as `0x${string}`,
+  registry: '0x9beb87effdac68baf13b505b7e1515f9d43e6ad2' as `0x${string}`,
+  mockVerifier: '0xd447c1342f7350ec5f0af60f8ed98e33b8c78ea1' as `0x${string}`,
   imageId: '0x6e251f4d993427d02a4199e1201f3b54462365d7c672a51be57f776d509b47eb',
   rpcUrl: 'https://sepolia.base.org',
   basescan: 'https://sepolia.basescan.org',
-  deployBlock: 37352827n,
+  deployBlock: 37354216n,
 } as const;
 
 const REGISTRY_ABI = [
@@ -99,7 +99,7 @@ const REGISTRY_ABI = [
   { type: 'function', name: 'verifier', inputs: [], outputs: [{ name: '', type: 'address' }], stateMutability: 'view' },
   { type: 'function', name: 'callIds', inputs: [{ name: '', type: 'uint256' }], outputs: [{ name: '', type: 'bytes32' }], stateMutability: 'view' },
   { type: 'function', name: 'getRecord', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: '', type: 'tuple', components: [{ name: 'decision', type: 'uint8' }, { name: 'reason', type: 'string' }, { name: 'journalHash', type: 'bytes32' }, { name: 'zkProofSeal', type: 'bytes' }, { name: 'journalDataAbi', type: 'bytes' }, { name: 'sourceUrl', type: 'string' }, { name: 'timestamp', type: 'uint256' }, { name: 'submitter', type: 'address' }, { name: 'verified', type: 'bool' }] }], stateMutability: 'view' },
-  { type: 'function', name: 'getProvenData', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: 'notaryKeyFingerprint', type: 'bytes32' }, { name: 'method', type: 'string' }, { name: 'url', type: 'string' }, { name: 'proofTimestamp', type: 'uint256' }, { name: 'queriesHash', type: 'bytes32' }, { name: 'extractedData', type: 'string' }], stateMutability: 'view' },
+  { type: 'function', name: 'getProvenData', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: 'notaryKeyFingerprint', type: 'bytes32' }, { name: 'method', type: 'string' }, { name: 'url', type: 'string' }, { name: 'proofTimestamp', type: 'uint256' }, { name: 'queriesHash', type: 'bytes32' }, { name: 'provenDecision', type: 'string' }, { name: 'provenReason', type: 'string' }], stateMutability: 'view' },
   { type: 'function', name: 'verifyJournal', inputs: [{ name: 'callId', type: 'bytes32' }, { name: 'journalData', type: 'bytes' }], outputs: [{ name: '', type: 'bool' }], stateMutability: 'view' },
 ] as const;
 

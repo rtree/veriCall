@@ -228,7 +228,7 @@ async function processWitnessAsync(
     const result = await submitDecisionOnChain({
       callSid: record.callSid,
       decision: decisionNum,
-      reason: data.reason.slice(0, 200),
+      reason: data.reason,    // must match journal's provenReason exactly
       zkProofSeal: zkProof,
       journalDataAbi,
     });

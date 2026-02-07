@@ -19,13 +19,14 @@ import "./interfaces/IRiscZeroVerifier.sol";
  *         This eliminates the V2 vulnerability where a submitter could supply
  *         a valid proof but alter the decision label in the external arguments.
  *
- *         Journal format (ABI-encoded, 6 fields from vlayer ZK Prover):
+ *         Journal format (ABI-encoded, 7 fields from vlayer ZK Prover):
  *           bytes32 notaryKeyFingerprint
  *           string  method              — "GET"
  *           string  url                 — proven Decision API URL
  *           uint256 timestamp           — TLS session timestamp
  *           bytes32 queriesHash         — keccak256 of JMESPath extraction queries
- *           string  extractedData       — '["BLOCK","reason text"]' or '["RECORD","reason text"]'
+ *           string  provenDecision      — "BLOCK" / "RECORD" / "ACCEPT" (from JMESPath)
+ *           string  provenReason        — AI reasoning text (from JMESPath)
  *
  *         Verifier injection (same as V2):
  *           - Dev/Hackathon: RiscZeroMockVerifier(0xFFFFFFFF)
@@ -106,8 +107,8 @@ contract VeriCallRegistryV3 {
     error InvalidHttpMethod();
     error InvalidQueriesHash();
     error InvalidUrl();
-    error EmptyExtractedData();
     error DecisionMismatch();
+    error ReasonMismatch();
     error ZKProofVerificationFailed();
 
     // ─── Constructor ───────────────────────────────────────────
@@ -186,8 +187,9 @@ contract VeriCallRegistryV3 {
             string memory url,
             ,  // timestamp — informational
             bytes32 queriesHash,
-            string memory extractedData
-        ) = abi.decode(journalDataAbi, (bytes32, string, string, uint256, bytes32, string));
+            string memory provenDecision,
+            string memory provenReason
+        ) = abi.decode(journalDataAbi, (bytes32, string, string, uint256, bytes32, string, string));
 
         // ── Step 3: Validate Journal Fields ────────────────────
         if (notaryKeyFingerprint != EXPECTED_NOTARY_KEY_FP)
@@ -202,14 +204,10 @@ contract VeriCallRegistryV3 {
         // URL prefix check (byte-by-byte, like LensMint)
         _validateUrlPrefix(url);
 
-        if (bytes(extractedData).length == 0)
-            revert EmptyExtractedData();
-
         // ── Step 4: Decision–Journal Binding ───────────────────
-        // Reconstruct the expected extractedData format from args:
-        //   '["BLOCK","reason text"]' or '["RECORD","reason text"]'
-        // and verify it matches what vlayer actually proved.
-        _validateDecisionBinding(decision, reason, extractedData);
+        // vlayer proves decision and reason as separate JMESPath fields.
+        // We directly compare the proven strings against the submitted args.
+        _validateDecisionBinding(decision, reason, provenDecision, provenReason);
 
         // ── Step 5: Store Record ───────────────────────────────
         records[callId] = CallRecord({
@@ -256,20 +254,22 @@ contract VeriCallRegistryV3 {
     // ─── Internal: Decision–Journal Binding ────────────────────
 
     /**
-     * @dev Verify that the decision and reason args match the extractedData
-     *      proven by vlayer in the journal.
+     * @dev Verify that the decision and reason args match the proven fields
+     *      from the vlayer journal.
      *
-     *      vlayer extractedData format (JMESPath ["decision","reason"]):
-     *        '["BLOCK","Suspicious sales pitch"]'
-     *        '["RECORD","Returning a previous call"]'
+     *      vlayer extracts decision and reason as separate JMESPath fields:
+     *        provenDecision = "BLOCK" / "RECORD" / "ACCEPT"
+     *        provenReason   = "Suspicious sales pitch detected"
      *
-     *      We reconstruct this string from the args and compare keccak256 hashes.
+     *      We compare the enum-derived string against provenDecision,
+     *      and the submitted reason against provenReason.
      *      This ensures the submitter cannot alter decision/reason after proof generation.
      */
     function _validateDecisionBinding(
         Decision decision,
         string calldata reason,
-        string memory extractedData
+        string memory provenDecision,
+        string memory provenReason
     ) internal pure {
         // Convert enum to the string that appears in the API response
         string memory decisionStr;
@@ -283,17 +283,13 @@ contract VeriCallRegistryV3 {
             revert InvalidDecision();
         }
 
-        // Reconstruct: '["BLOCK","reason text"]'
-        bytes memory reconstructed = abi.encodePacked(
-            '["',
-            decisionStr,
-            '","',
-            reason,
-            '"]'
-        );
-
-        if (keccak256(reconstructed) != keccak256(bytes(extractedData)))
+        // Direct comparison: proven decision string must match enum
+        if (keccak256(bytes(provenDecision)) != keccak256(bytes(decisionStr)))
             revert DecisionMismatch();
+
+        // Direct comparison: proven reason must match submitted reason
+        if (keccak256(bytes(provenReason)) != keccak256(bytes(reason)))
+            revert ReasonMismatch();
     }
 
     // ─── View: Decoded Proven Data ─────────────────────────────
@@ -307,11 +303,12 @@ contract VeriCallRegistryV3 {
         string memory url,
         uint256 proofTimestamp,
         bytes32 queriesHash,
-        string memory extractedData
+        string memory provenDecision,
+        string memory provenReason
     ) {
         bytes memory journal = records[callId].journalDataAbi;
         require(journal.length > 0, "Record not found");
-        return abi.decode(journal, (bytes32, string, string, uint256, bytes32, string));
+        return abi.decode(journal, (bytes32, string, string, uint256, bytes32, string, string));
     }
 
     // ─── View: Standard Accessors ──────────────────────────────

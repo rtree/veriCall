@@ -78,12 +78,13 @@ export async function GET() {
       const decisionLabel = DECISION_LABELS[decision] || 'UNKNOWN';
       const timestamp = Number(record.timestamp);
 
-      // V3: use on-chain getProvenData() for journal decoding
+      // V3: use on-chain getProvenData() for journal decoding (7 fields)
       let provenData = {
         method: 'N/A',
         url: record.sourceUrl,
         proofTimestamp: 0,
-        extractedData: '',
+        provenDecision: '',
+        provenReason: '',
         notaryKeyFingerprint: '',
         queriesHash: '',
       };
@@ -100,7 +101,8 @@ export async function GET() {
           url: pd[2] || record.sourceUrl,
           proofTimestamp: Number(pd[3] || 0),
           queriesHash: pd[4] || '',
-          extractedData: pd[5] || '',
+          provenDecision: pd[5] || '',
+          provenReason: pd[6] || '',
         };
       } catch { /* journal may not be decodable */ }
 

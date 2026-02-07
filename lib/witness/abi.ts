@@ -65,7 +65,8 @@ export const VERICALL_REGISTRY_ABI = [
       { name: 'url', type: 'string' },
       { name: 'proofTimestamp', type: 'uint256' },
       { name: 'queriesHash', type: 'bytes32' },
-      { name: 'extractedData', type: 'string' },
+      { name: 'provenDecision', type: 'string' },
+      { name: 'provenReason', type: 'string' },
     ],
     stateMutability: 'view',
   },
@@ -198,8 +199,8 @@ export const VERICALL_REGISTRY_ABI = [
   { type: 'error', name: 'InvalidHttpMethod', inputs: [] },
   { type: 'error', name: 'InvalidQueriesHash', inputs: [] },
   { type: 'error', name: 'InvalidUrl', inputs: [] },
-  { type: 'error', name: 'EmptyExtractedData', inputs: [] },
   { type: 'error', name: 'DecisionMismatch', inputs: [] },
+  { type: 'error', name: 'ReasonMismatch', inputs: [] },
   { type: 'error', name: 'ZKProofVerificationFailed', inputs: [] },
 ] as const;
 

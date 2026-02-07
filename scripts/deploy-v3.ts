@@ -47,11 +47,10 @@ const BASESCAN = 'https://sepolia.basescan.org';
 const NOTARY_KEY_FP = process.env.VLAYER_NOTARY_KEY_FP ||
   '0xa7e62d7f17aa7a22c26bdb93b7ce9400e826ffb2c6f54e54d2ded015677499af';
 
-// JMESPath queries hash — keccak256 of the extraction used in ZK compression
-// This should be computed from the actual extraction config and stored.
-// For now, use the queriesHash from a known good proof, or compute it.
+// JMESPath queries hash — keccak256 of the extraction config ["decision","reason"]
+// Extracted from the first successful vlayer proof (2026-02-07).
 const QUERIES_HASH = process.env.VLAYER_QUERIES_HASH ||
-  '0x0000000000000000000000000000000000000000000000000000000000000000'; // to be updated after first real proof
+  '0x53a22f40e1378be18066f71a6924fe5a9a4d564126eed088fc3d6ef1a2cc8b8e';
 
 const URL_PREFIX = process.env.VLAYER_URL_PREFIX ||
   process.env.VLAYER_PROOF_SOURCE_URL ||
@@ -208,10 +207,10 @@ async function main() {
   console.log(`   urlPrefix:    ${storedPrefix === DECISION_URL_PREFIX ? '✅' : '❌'}`);
 
   // 3c: End-to-end simulation with decision binding
-  console.log(`\n   [E2E] Simulation with decision–journal binding`);
+  console.log(`\n   [E2E] Simulation with decision–journal binding (7-field journal)`);
 
+  const testDecision = 'BLOCK';
   const testReason = 'Suspicious sales pitch detected';
-  const testExtractedData = `["BLOCK","${testReason}"]`;
 
   const testJournal = encodeAbiParameters(
     [
@@ -221,6 +220,7 @@ async function main() {
       { type: 'uint256' },
       { type: 'bytes32' },
       { type: 'string' },
+      { type: 'string' },
     ],
     [
       NOTARY_KEY_FP as `0x${string}`,
@@ -228,7 +228,8 @@ async function main() {
       `${DECISION_URL_PREFIX}test_call_sid`,
       BigInt(Math.floor(Date.now() / 1000)),
       QUERIES_HASH as `0x${string}`,
-      testExtractedData,
+      testDecision,
+      testReason,
     ],
   );
 
@@ -255,7 +256,8 @@ async function main() {
     console.log(`     → method check       OK`);
     console.log(`     → queriesHash check  OK`);
     console.log(`     → URL prefix check   OK`);
-    console.log(`     → decision binding   OK (BLOCK == extractedData)`);
+    console.log(`     → decision binding   OK (enum BLOCK == provenDecision "BLOCK")`);
+    console.log(`     → reason binding     OK (submitted == provenReason)`);
   } catch (simErr: any) {
     console.error(`   ❌ Simulation FAILED: ${simErr.shortMessage || simErr.message}`);
     throw new Error('E2E simulation failed');
@@ -374,9 +376,9 @@ async function main() {
   //     V3では deploy スクリプトが全箇所を一括更新する。
   console.log(`\n   [4d] Updating hardcoded addresses in consumer files...`);
 
-  const V2_REGISTRY = '0x656ae703ca94cc4247493dec6f9af9c6f974ba82';
-  const V2_MOCK     = '0x9afb5f28e2317d75212a503eecf02dce4a7b6f0e';
-  const V2_DEPLOY_BLOCK = '37335241';
+  const V3_OLD_REGISTRY = '0x55d90c4c615884c2af3fd1b14e8d316610b66fd3';
+  const V3_OLD_MOCK     = '0xc6c4c01cdeec0c2f07575ea5c8c751fe4de2bcbe';
+  const V3_OLD_DEPLOY_BLOCK = '37352827';
 
   const filesToPatch = [
     resolve(__dirname, '../scripts/verify.ts'),
@@ -396,22 +398,22 @@ async function main() {
 
     // Replace registry address (case-insensitive for checksummed vs lowercase)
     content = content.replace(
-      new RegExp(V2_REGISTRY, 'gi'),
+      new RegExp(V3_OLD_REGISTRY, 'gi'),
       v3Address.toLowerCase(),
     );
     // Replace mock verifier address
     content = content.replace(
-      new RegExp(V2_MOCK, 'gi'),
+      new RegExp(V3_OLD_MOCK, 'gi'),
       mockAddress.toLowerCase(),
     );
     // Replace deploy block (BigInt and plain number forms)
     const v3Block = String(v3Receipt.blockNumber);
     content = content.replace(
-      new RegExp(`BigInt\\(${V2_DEPLOY_BLOCK}\\)`, 'g'),
+      new RegExp(`BigInt\\(${V3_OLD_DEPLOY_BLOCK}\\)`, 'g'),
       `BigInt(${v3Block})`,
     );
     content = content.replace(
-      new RegExp(`${V2_DEPLOY_BLOCK}n`, 'g'),
+      new RegExp(`${V3_OLD_DEPLOY_BLOCK}n`, 'g'),
       `${v3Block}n`,
     );
 
@@ -424,10 +426,9 @@ async function main() {
   }
 
   if (patchCount === 0) {
-    console.log(`      ℹ️  No hardcoded V2 addresses found to update`);
+    console.log(`      ℹ️  No hardcoded old addresses found to update`);
   } else {
-    console.log(`      📝 ${patchCount} file(s) patched. NOTE: ABI in these files may still be V2.`);
-    console.log(`         Run V3 ABI migration separately if needed.`);
+    console.log(`      📝 ${patchCount} file(s) patched with new contract addresses.`);
   }
 
   // ── Summary ────────────────────────────────────────────────
@@ -437,8 +438,8 @@ async function main() {
   console.log('═'.repeat(60));
   console.log(`\n  MockVerifier:     ${mockAddress}`);
   console.log(`  RegistryV3:       ${v3Address}`);
-  console.log(`  V2 (previous):    0x656ae703ca94cc4247493dec6f9af9c6f974ba82`);
-  console.log(`  V1 (legacy):      0xe454ca755219310b2728d39db8039cbaa7abc3b8`);
+  console.log(`  V3 prev:          0x55d90c4c615884c2af3fd1b14e8d316610b66fd3`);
+  console.log(`  V2 (legacy):      0x656ae703ca94cc4247493dec6f9af9c6f974ba82`);
   console.log(`\n  Improvements over V2:`);
   console.log(`    ✅ Notary FP immutable check`);
   console.log(`    ✅ QueriesHash immutable check`);
