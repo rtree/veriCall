@@ -174,7 +174,7 @@ function useDemo() {
           setLastTxHash(txHash);
           setLastBlockNumber(blockNum);
           setPhase('complete');
-          addLog('⛓️', 'ON-CHAIN', `TX: ${txHash.slice(0, 10)}…${txHash.slice(-8)}  block: ${blockNum}`, '#22c55e', 'complete');
+          addLog('⛓️', 'ON-CHAIN', `TX: ${txHash.slice(0, 10)}…${txHash.slice(-8)}  block: ${blockNum}`, '#22c55e', 'complete', txHash ? `${BASESCAN}/tx/${txHash}` : undefined);
           break;
         }
 
@@ -630,21 +630,21 @@ export default function DemoPage() {
         {logs.map(entry => (
           <div key={entry.id} style={{
             ...styles.logEntry,
-            paddingLeft: entry.indent ? '7.5rem' : undefined,
-            opacity: entry.indent ? 0.7 : 1,
+            paddingLeft: entry.indent ? '3.75rem' : undefined,
+            opacity: entry.indent ? 0.85 : 1,
           }}>
             <span style={styles.logTime}>{entry.indent ? '' : entry.timestamp}</span>
             <span style={{ fontSize: entry.indent ? '0.8rem' : '1rem', width: '1.5rem', textAlign: 'center' }}>{entry.indent ? '' : entry.icon}</span>
             <span style={{
               fontWeight: 600, fontSize: entry.indent ? '0.65rem' : '0.75rem',
-              color: entry.indent ? '#555' : entry.color,
+              color: entry.indent ? '#888' : entry.color,
               minWidth: '5rem',
               textTransform: 'uppercase',
             }}>
               {entry.indent ? '' : entry.label}
             </span>
             <span style={{
-              color: entry.indent ? '#666' : entry.phase === 'call' ? '#ddd' : '#aaa',
+              color: entry.indent ? '#aaa' : entry.phase === 'call' ? '#f5f5f5' : '#e0e0e0',
               fontStyle: (entry.label === 'Caller' || entry.label === 'AI') ? 'italic' : 'normal',
               fontSize: entry.indent ? '0.8rem' : undefined,
               fontFamily: entry.indent ? 'monospace' : undefined,
@@ -768,7 +768,7 @@ export default function DemoPage() {
 const styles: Record<string, React.CSSProperties> = {
   page: {
     minHeight: '100vh',
-    background: '#0a0a0a',
+    background: '#050505',
     color: '#ededed',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     display: 'flex',
@@ -859,7 +859,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderBottom: '1px solid #111',
   },
   logTime: {
-    color: '#444',
+    color: '#888',
     fontFamily: 'monospace',
     fontSize: '0.75rem',
     minWidth: '5.5rem',

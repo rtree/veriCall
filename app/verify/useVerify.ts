@@ -76,6 +76,8 @@ export interface Check {
   detail: string;
   /** Optional BaseScan or explorer link for the detail value */
   detailLink?: string;
+  /** Sub-detail rows (richer data, shown indented) */
+  subDetails?: Array<{ text: string; link?: string }>;
 }
 
 export interface RecordData {
@@ -302,11 +304,17 @@ async function verifyRecord(
 
   const checks: Check[] = [];
 
-  // V1: verified flag
+  // V1: verified flag + seal inspection
+  const sealHex = record.zkProofSeal as `0x${string}`;
+  const sealBytes = sealHex.length > 2 ? (sealHex.length - 2) / 2 : 0;
+  const sealPrefix = sealHex.slice(0, 10);
   checks.push({
     id: 'V1', label: 'ZK proof verified on-chain',
     status: record.verified ? 'pass' : 'fail',
-    detail: record.verified ? 'Verified during registration' : 'NOT verified',
+    detail: record.verified ? 'record.verified == true' : 'NOT verified',
+    subDetails: [
+      { text: `Seal: ${sealPrefix}… (${sealBytes} bytes)${sealPrefix === '0xffffffff' ? ' ← RISC Zero Mock selector' : ''}` },
+    ],
   });
 
   // V2: Journal hash
@@ -315,7 +323,11 @@ async function verifyRecord(
   checks.push({
     id: 'V2', label: 'Journal hash integrity',
     status: hashMatch ? 'pass' : 'fail',
-    detail: hashMatch ? 'keccak256 match' : 'MISMATCH',
+    detail: hashMatch ? 'keccak256(journalDataAbi) == journalHash' : 'MISMATCH',
+    subDetails: [
+      { text: `Stored:   ${record.journalHash}` },
+      { text: `Computed: ${computedHash}` },
+    ],
   });
 
   // V3: verifyJournal()
@@ -330,15 +342,19 @@ async function verifyRecord(
     id: 'V3', label: 'On-chain journal verification',
     status: journalOk ? 'pass' : 'fail',
     detail: journalOk ? 'verifyJournal() → true' : 'verifyJournal() failed',
+    subDetails: [
+      { text: 'Contract re-computed keccak256 and confirmed match' },
+    ],
   });
 
   // V4: Direct seal re-verify
   let sealOk = false;
+  let journalDigest = '' as string;
   try {
-    const digest = sha256(record.journalDataAbi);
+    journalDigest = sha256(record.journalDataAbi) as string;
     await client.readContract({
       address: verifierAddr, abi: MOCK_VERIFIER_ABI, functionName: 'verify',
-      args: [record.zkProofSeal, imageId, digest],
+      args: [record.zkProofSeal, imageId, journalDigest],
     });
     sealOk = true;
   } catch { /* */ }
@@ -346,10 +362,14 @@ async function verifyRecord(
     id: 'V4', label: 'Independent seal re-verification',
     status: sealOk ? 'pass' : 'fail',
     detail: sealOk ? 'verifier.verify() passed' : 'verifier.verify() failed',
+    subDetails: [
+      { text: `ImageID: ${imageId.slice(0, 14)}…${imageId.slice(-8)}` },
+      { text: `JournalDigest: ${journalDigest.slice(0, 14)}…${journalDigest.slice(-8)}` },
+    ],
   });
 
   // V5: Proven data
-  let provenData = { method: '', url: '', notaryFP: '', proofTimestamp: '', extractedData: '' };
+  let provenData = { method: '', url: '', notaryFP: '', proofTimestamp: '', extractedData: '', provenDecision: '', provenReason: '' };
   let provenOk = false;
   try {
     const pd = (await client.readContract({
@@ -364,46 +384,85 @@ async function verifyRecord(
     provenData = {
       method: pd[1],
       url: pd[2],
-      notaryFP: (pd[0] as string).slice(0, 14) + '...',
+      notaryFP: pd[0] as string,
       proofTimestamp: Number(pd[3]) > 0 ? new Date(Number(pd[3]) * 1000).toISOString() : 'N/A',
       extractedData: pd[5],
+      provenDecision: pd[5] as string,
+      provenReason: pd[6] as string,
     };
   } catch { /* */ }
+  const v5SubDetails: Array<{ text: string; link?: string }> = [];
+  if (provenData.notaryFP) v5SubDetails.push({ text: `NotaryKey FP: ${provenData.notaryFP.slice(0, 14)}…${provenData.notaryFP.slice(-8)}` });
+  if (provenData.method) v5SubDetails.push({ text: `Method: ${provenData.method}` });
+  if (provenData.url) v5SubDetails.push({ text: `URL: ${provenData.url}` });
+  if (provenData.provenDecision) v5SubDetails.push({ text: `Proven decision: ${provenData.provenDecision}` });
+  if (provenData.provenReason) v5SubDetails.push({ text: `Proven reason: "${provenData.provenReason.slice(0, 120)}${provenData.provenReason.length > 120 ? '…' : ''}"` });
   checks.push({
-    id: 'V5', label: 'TLSNotary metadata valid',
+    id: 'V5', label: 'TLSNotary web proof metadata',
     status: provenOk ? 'pass' : 'fail',
-    detail: provenOk ? `${provenData.method} — data extracted` : 'Invalid or missing',
+    detail: provenOk ? 'All fields valid' : 'Invalid or missing',
+    subDetails: v5SubDetails,
+  });
+
+  // V5b: Decision consistency — proven data vs on-chain record
+  const decisionMatch = provenData.provenDecision
+    ? provenData.provenDecision.toUpperCase() === (DECISION_LABELS[decision] || '').toUpperCase()
+    : false;
+  checks.push({
+    id: 'V5b', label: 'Decision consistency',
+    status: decisionMatch ? 'pass' : 'fail',
+    detail: decisionMatch
+      ? `Proven "${provenData.provenDecision}" matches on-chain "${DECISION_LABELS[decision]}"`
+      : `Proven "${provenData.provenDecision || '?'}" ≠ on-chain "${DECISION_LABELS[decision]}"`,
   });
 
   // V6: TX from events (chunked to avoid RPC range limits)
   let txHash: string | null = null;
+  let eventBlock: bigint | null = null;
   try {
     const logs = await chunkedGetLogs(client, {
       address: CONFIG.registry, event: CallDecisionRecordedEvent,
       args: { callId }, fromBlock: CONFIG.deployBlock, toBlock: 'latest',
     });
-    if (logs.length > 0) txHash = logs[0].transactionHash;
+    if (logs.length > 0) {
+      txHash = logs[0].transactionHash;
+      eventBlock = logs[0].blockNumber;
+    }
   } catch { /* */ }
+  const v6SubDetails: Array<{ text: string; link?: string }> = [];
+  if (txHash) v6SubDetails.push({ text: `TX: ${txHash}`, link: `${CONFIG.basescan}/tx/${txHash}` });
+  if (eventBlock) v6SubDetails.push({ text: `Block: ${eventBlock}`, link: `${CONFIG.basescan}/block/${eventBlock}` });
   checks.push({
-    id: 'V6', label: 'Registration TX found',
+    id: 'V6', label: 'CallDecisionRecorded event found',
     status: txHash ? 'pass' : 'fail',
     detail: txHash ? txHash.slice(0, 6) + '...' + txHash.slice(-4) : 'Event lookup failed',
     detailLink: txHash ? `${CONFIG.basescan}/tx/${txHash}` : undefined,
+    subDetails: v6SubDetails,
   });
 
   // V7: ProofVerified event (chunked to avoid RPC range limits)
   let proofEventFound = false;
+  let proofEventImageId = '';
+  let proofEventDigest = '';
   try {
     const logs = await chunkedGetLogs(client, {
       address: CONFIG.registry, event: ProofVerifiedEvent,
       args: { callId }, fromBlock: CONFIG.deployBlock, toBlock: 'latest',
     });
-    proofEventFound = logs.length > 0;
+    if (logs.length > 0) {
+      proofEventFound = true;
+      proofEventImageId = logs[0].args?.imageId || '';
+      proofEventDigest = logs[0].args?.journalDigest || '';
+    }
   } catch { /* */ }
+  const v7SubDetails: Array<{ text: string; link?: string }> = [];
+  if (proofEventImageId) v7SubDetails.push({ text: `Event imageId: ${String(proofEventImageId).slice(0, 14)}…` });
+  if (proofEventDigest) v7SubDetails.push({ text: `Event journalDigest: ${String(proofEventDigest).slice(0, 14)}…` });
   checks.push({
     id: 'V7', label: 'ProofVerified event emitted',
     status: proofEventFound ? 'pass' : 'fail',
     detail: proofEventFound ? 'ZK verification confirmed on-chain' : 'Event not found',
+    subDetails: v7SubDetails,
   });
 
   return {

@@ -167,15 +167,15 @@ export default function VerifyPage() {
               {state.contract.checks.map(c => (
                 <div key={c.id} style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', fontSize: '0.8rem' }}>
                   <span style={{
-                    color: c.status === 'pass' ? '#555' : c.status === 'fail' ? '#ef4444' : '#eab308',
+                    color: c.status === 'pass' ? '#22c55e' : c.status === 'fail' ? '#ef4444' : '#eab308',
                   }}>
                     {c.status === 'pass' ? '✓' : c.status === 'fail' ? '✗' : '◌'}
                   </span>
-                  <span style={{ color: '#888' }}>{c.label}</span>
+                  <span style={{ color: '#ccc' }}>{c.label}</span>
                   {c.detail && (
                     c.detailLink
-                      ? <a href={c.detailLink} target="_blank" rel="noopener" style={{ color: '#666', fontSize: '0.75rem', textDecoration: 'none' }}>— {c.detail} ↗</a>
-                      : <span style={{ color: '#555', fontSize: '0.75rem' }}>— {c.detail}</span>
+                      ? <a href={c.detailLink} target="_blank" rel="noopener" style={{ color: '#aaa', fontSize: '0.75rem', textDecoration: 'none' }}>— {c.detail} ↗</a>
+                      : <span style={{ color: '#999', fontSize: '0.75rem' }}>— {c.detail}</span>
                   )}
                 </div>
               ))}
@@ -226,15 +226,15 @@ export default function VerifyPage() {
                             target="_blank"
                             rel="noopener"
                             onClick={e => e.stopPropagation()}
-                            style={{ color: '#555', fontSize: '0.75rem', textDecoration: 'none' }}
+                            style={{ color: '#888', fontSize: '0.75rem', textDecoration: 'none' }}
                           >
                             {fmtHash(rec.txHash)}
                           </a>
                         )}
-                        <span style={{ color: '#555', fontSize: '0.75rem' }}>
+                        <span style={{ color: '#888', fontSize: '0.75rem' }}>
                           {new Date(rec.timestamp).toLocaleString()}
                         </span>
-                        <span style={{ color: '#555' }}>{isSelected ? '▾' : '▸'}</span>
+                        <span style={{ color: '#888' }}>{isSelected ? '▾' : '▸'}</span>
                       </div>
                     </div>
                   </div>
@@ -367,22 +367,22 @@ function RecordDetail({ record }: { record: RecordData }) {
       {/* Metadata */}
       <div style={styles.recordMeta}>
         <div>
-          <span style={{ color: '#666' }}>Call ID </span>
-          <code style={{ color: '#aaa' }}>{fmtHash(record.callId)}</code>
+          <span style={{ color: '#aaa' }}>Call ID </span>
+          <code style={{ color: '#e0e0e0' }}>{fmtHash(record.callId)}</code>
         </div>
         <div>
-          <span style={{ color: '#666' }}>Time </span>
+          <span style={{ color: '#aaa' }}>Time </span>
           {record.timestamp}
         </div>
         <div>
-          <span style={{ color: '#666' }}>Submitter </span>
-          <a href={addrLink(record.submitter)} target="_blank" rel="noopener" style={{ color: '#aaa', textDecoration: 'none' }}>
+          <span style={{ color: '#aaa' }}>Submitter </span>
+          <a href={addrLink(record.submitter)} target="_blank" rel="noopener" style={{ color: '#ccc', textDecoration: 'none' }}>
             <code>{fmtHash(record.submitter)}</code> ↗
           </a>
         </div>
         {record.txHash && (
           <div>
-            <span style={{ color: '#666' }}>TX </span>
+            <span style={{ color: '#aaa' }}>TX </span>
             <a href={txLink(record.txHash)} target="_blank" rel="noopener" style={{ color: '#22c55e', textDecoration: 'none' }}>
               <code>{fmtHash(record.txHash)}</code> ↗
             </a>
@@ -390,7 +390,7 @@ function RecordDetail({ record }: { record: RecordData }) {
         )}
         {record.provenData.extractedData && (
           <div>
-            <span style={{ color: '#666' }}>Proven Data </span>
+            <span style={{ color: '#aaa' }}>Proven Data </span>
             <code style={{ color: '#22c55e' }}>{record.provenData.extractedData}</code>
           </div>
         )}
@@ -403,18 +403,26 @@ function RecordDetail({ record }: { record: RecordData }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', flexDirection: 'column' as const, gap: '0.15rem' }}>
                 <span>
-                  <code style={{ color: '#555', fontSize: '0.75rem', marginRight: '0.4rem' }}>[{c.id}]</code>
-                  <span style={{ fontSize: '0.85rem' }}>{c.label}</span>
+                  <code style={{ color: '#888', fontSize: '0.75rem', marginRight: '0.4rem' }}>[{c.id}]</code>
+                  <span style={{ fontSize: '0.85rem', color: '#e0e0e0' }}>{c.label}</span>
                 </span>
                 {c.detail && (
                   c.detailLink
-                    ? <a href={c.detailLink} target="_blank" rel="noopener" style={{ color: '#666', fontSize: '0.75rem', paddingLeft: '2rem', textDecoration: 'none' }}>
+                    ? <a href={c.detailLink} target="_blank" rel="noopener" style={{ color: '#aaa', fontSize: '0.75rem', paddingLeft: '1rem', textDecoration: 'none' }}>
                         {c.detail} ↗
                       </a>
-                    : <span style={{ color: '#666', fontSize: '0.75rem', paddingLeft: '2rem' }}>
+                    : <span style={{ color: '#aaa', fontSize: '0.75rem', paddingLeft: '1rem' }}>
                         {c.detail}
                       </span>
                 )}
+                {c.subDetails && c.subDetails.map((sub, si) => (
+                  <span key={si} style={{ color: '#888', fontSize: '0.7rem', paddingLeft: '1rem', fontFamily: 'monospace' }}>
+                    {sub.link
+                      ? <a href={sub.link} target="_blank" rel="noopener" style={{ color: '#888', textDecoration: 'none' }}>{sub.text} ↗</a>
+                      : sub.text
+                    }
+                  </span>
+                ))}
               </div>
               <span style={{
                 color: c.status === 'pass' ? '#22c55e' : '#ef4444',
@@ -436,7 +444,7 @@ function RecordDetail({ record }: { record: RecordData }) {
 
 const styles: Record<string, React.CSSProperties> = {
   page: {
-    background: '#0a0a0a', color: '#ededed', minHeight: '100vh',
+    background: '#050505', color: '#ededed', minHeight: '100vh',
     fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace",
     maxWidth: '900px', margin: '0 auto', padding: '0 1.5rem 3rem',
   },
@@ -466,11 +474,11 @@ const styles: Record<string, React.CSSProperties> = {
   // Hero
   hero: { padding: '2rem 0 1rem' },
   title: { fontSize: '1.8rem', fontWeight: 700, marginBottom: '0.5rem' },
-  subtitle: { color: '#aaa', fontSize: '1rem', lineHeight: 1.5 },
+  subtitle: { color: '#ccc', fontSize: '1rem', lineHeight: 1.5 },
   trustNote: {
     marginTop: '0.75rem', padding: '0.6rem 1rem',
     background: '#111', border: '1px solid #222', borderRadius: '8px',
-    fontSize: '0.85rem', color: '#888',
+    fontSize: '0.85rem', color: '#aaa',
   },
   startButton: {
     marginTop: '1.25rem', padding: '0.75rem 2rem',
@@ -561,7 +569,7 @@ const styles: Record<string, React.CSSProperties> = {
     flexWrap: 'wrap' as const, gap: '0.5rem', marginBottom: '0.75rem',
   },
   recordReason: {
-    color: '#ccc', fontStyle: 'italic' as const,
+    color: '#e0e0e0', fontStyle: 'italic' as const,
     padding: '0.5rem 0', borderBottom: '1px solid #1a1a1a',
     marginBottom: '0.75rem', fontSize: '0.9rem',
   },
@@ -572,7 +580,7 @@ const styles: Record<string, React.CSSProperties> = {
 
   // ZK Checks
   zkCheckCell: {
-    padding: '0.5rem 0.75rem', background: '#0a0a0a',
+    padding: '0.5rem 0.75rem', background: '#050505',
     borderRadius: '8px', border: '1px solid #1a1a1a',
   },
 
@@ -598,9 +606,9 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '0.8rem', fontWeight: 600, color: '#22c55e', marginBottom: '0.5rem',
   },
   codeBlock: {
-    background: '#0a0a0a', padding: '0.75rem',
+    background: '#050505', padding: '0.75rem',
     borderRadius: '6px', fontSize: '0.72rem',
-    overflow: 'auto' as const, lineHeight: 1.4, color: '#aaa',
+    overflow: 'auto' as const, lineHeight: 1.4, color: '#ccc',
     border: '1px solid #1a1a1a',
   },
 
@@ -616,7 +624,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '1.5rem', textAlign: 'center' as const,
   },
   pipelineLabel: {
-    fontSize: '0.75rem', color: '#aaa',
+    fontSize: '0.75rem', color: '#ccc',
   },
   pipelineArrow: {
     color: '#333', margin: '0 0.6rem', fontSize: '1.2rem',
@@ -626,6 +634,6 @@ const styles: Record<string, React.CSSProperties> = {
   footer: {
     display: 'flex', justifyContent: 'center', gap: '2rem',
     padding: '2rem 0', borderTop: '1px solid #1a1a1a',
-    color: '#555', fontSize: '0.8rem', marginTop: '2rem',
+    color: '#888', fontSize: '0.8rem', marginTop: '2rem',
   },
 };
