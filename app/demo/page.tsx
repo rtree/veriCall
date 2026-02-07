@@ -11,6 +11,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import { createPublicClient, http, keccak256, sha256, parseAbiItem } from 'viem';
+import { baseSepolia } from 'viem/chains';
 
 // ═══════════════════════════════════════════════════════════════
 // Types
@@ -42,6 +44,37 @@ interface LogEntry {
 const BASE_URL = typeof window !== 'undefined' ? window.location.origin : '';
 
 const BASESCAN = 'https://sepolia.basescan.org';
+
+// ── Verification config (self-contained, same as /verify) ────
+const VERIFY_CONFIG = {
+  registry: '0x656ae703ca94cc4247493dec6f9af9c6f974ba82' as `0x${string}`,
+  mockVerifier: '0x9afb5f28e2317d75212a503eecf02dce4a7b6f0e' as `0x${string}`,
+  deployBlock: BigInt(37335241),
+  rpcUrl: 'https://sepolia.base.org',
+} as const;
+
+const REGISTRY_ABI = [
+  { type: 'function', name: 'getStats', inputs: [], outputs: [{ name: 'total', type: 'uint256' }, { name: 'accepted', type: 'uint256' }, { name: 'blocked', type: 'uint256' }, { name: 'recorded', type: 'uint256' }], stateMutability: 'view' },
+  { type: 'function', name: 'owner', inputs: [], outputs: [{ name: '', type: 'address' }], stateMutability: 'view' },
+  { type: 'function', name: 'imageId', inputs: [], outputs: [{ name: '', type: 'bytes32' }], stateMutability: 'view' },
+  { type: 'function', name: 'verifier', inputs: [], outputs: [{ name: '', type: 'address' }], stateMutability: 'view' },
+  { type: 'function', name: 'callIds', inputs: [{ name: '', type: 'uint256' }], outputs: [{ name: '', type: 'bytes32' }], stateMutability: 'view' },
+  { type: 'function', name: 'getRecord', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: '', type: 'tuple', components: [{ name: 'callerHash', type: 'bytes32' }, { name: 'decision', type: 'uint8' }, { name: 'reason', type: 'string' }, { name: 'journalHash', type: 'bytes32' }, { name: 'zkProofSeal', type: 'bytes' }, { name: 'journalDataAbi', type: 'bytes' }, { name: 'sourceUrl', type: 'string' }, { name: 'timestamp', type: 'uint256' }, { name: 'submitter', type: 'address' }, { name: 'verified', type: 'bool' }] }], stateMutability: 'view' },
+  { type: 'function', name: 'getProvenData', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: 'notaryKeyFingerprint', type: 'bytes32' }, { name: 'method', type: 'string' }, { name: 'url', type: 'string' }, { name: 'proofTimestamp', type: 'uint256' }, { name: 'queriesHash', type: 'bytes32' }, { name: 'extractedData', type: 'string' }], stateMutability: 'view' },
+  { type: 'function', name: 'verifyJournal', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: '', type: 'bool' }], stateMutability: 'view' },
+] as const;
+
+const MOCK_VERIFIER_ABI = [
+  { type: 'function', name: 'SELECTOR', inputs: [], outputs: [{ name: '', type: 'bytes4' }], stateMutability: 'view' },
+  { type: 'function', name: 'verify', inputs: [{ name: 'seal', type: 'bytes' }, { name: 'imageId', type: 'bytes32' }, { name: 'journalDigest', type: 'bytes32' }], outputs: [], stateMutability: 'pure' },
+] as const;
+
+const CallDecisionRecordedEvent = parseAbiItem(
+  'event CallDecisionRecorded(bytes32 indexed callId, bytes32 indexed callerHash, uint8 decision, uint256 timestamp, address submitter)',
+);
+const ProofVerifiedEvent = parseAbiItem(
+  'event ProofVerified(bytes32 indexed callId, bytes32 imageId, bytes32 journalDigest)',
+);
 
 // ═══════════════════════════════════════════════════════════════
 // Hook: useDemo
@@ -228,21 +261,143 @@ function useDemo() {
     };
   }, [handleEvent]);
 
-  return { phase, logs, connected, error, lastTxHash, lastBlockNumber, turnCount };
+  return { phase, logs, connected, error, lastTxHash, lastBlockNumber, turnCount, addLog };
 }
 
 // ═══════════════════════════════════════════════════════════════
 // Component
 // ═══════════════════════════════════════════════════════════════
 
+const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
+
 export default function DemoPage() {
-  const { phase, logs, connected, error, lastTxHash, lastBlockNumber, turnCount } = useDemo();
+  const { phase, logs, connected, error, lastTxHash, lastBlockNumber, turnCount, addLog } = useDemo();
   const logEndRef = useRef<HTMLDivElement>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
 
   // Auto-scroll
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs.length]);
+
+  // ─── Inline On-Chain Verification ─────────────────────
+  const runVerification = useCallback(async () => {
+    if (isVerifying) return;
+    setIsVerifying(true);
+
+    const ok = (id: string, text: string) => addLog('✅', id, text, '#22c55e', 'complete');
+    const ng = (id: string, text: string) => addLog('❌', id, text, '#ef4444', 'complete');
+
+    addLog('🔍', 'VERIFY', 'Starting independent on-chain verification…', '#a78bfa', 'complete');
+    await wait(200);
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const client: any = createPublicClient({ chain: baseSepolia, transport: http(VERIFY_CONFIG.rpcUrl) });
+
+      // C1: Contract deployed
+      const bytecode = await client.getCode({ address: VERIFY_CONFIG.registry });
+      const size = bytecode ? (bytecode.length - 2) / 2 : 0;
+      size > 0 ? ok('C1', `Contract deployed — ${size} bytes`) : ng('C1', 'No bytecode');
+      await wait(120);
+
+      // C2: Registry responds
+      const stats = (await client.readContract({ address: VERIFY_CONFIG.registry, abi: REGISTRY_ABI, functionName: 'getStats' })) as [bigint, bigint, bigint, bigint];
+      const total = Number(stats[0]);
+      ok('C2', `Registry responds — ${total} records on-chain`);
+      await wait(120);
+
+      // C3: Verifier configured
+      const verifierAddr = (await client.readContract({ address: VERIFY_CONFIG.registry, abi: REGISTRY_ABI, functionName: 'verifier' })) as `0x${string}`;
+      let isMock = false;
+      try { const sel = (await client.readContract({ address: verifierAddr, abi: MOCK_VERIFIER_ABI, functionName: 'SELECTOR' })) as string; isMock = sel === '0xffffffff'; } catch { /* not mock */ }
+      ok('C3', `Verifier: ${isMock ? 'MockVerifier (dev)' : verifierAddr.slice(0, 10) + '…'}`);
+      await wait(120);
+
+      // C4: Image ID
+      const imageId = (await client.readContract({ address: VERIFY_CONFIG.registry, abi: REGISTRY_ABI, functionName: 'imageId' })) as `0x${string}`;
+      const hasImage = imageId !== '0x' + '0'.repeat(64);
+      hasImage ? ok('C4', `Image ID: ${imageId.slice(0, 10)}…${imageId.slice(-6)}`) : ng('C4', 'Image ID not set');
+      await wait(120);
+
+      // C5: Owner
+      const owner = (await client.readContract({ address: VERIFY_CONFIG.registry, abi: REGISTRY_ABI, functionName: 'owner' })) as `0x${string}`;
+      ok('C5', `Owner: ${owner.slice(0, 10)}…${owner.slice(-6)}`);
+      await wait(150);
+
+      if (total === 0) {
+        addLog('⚠️', 'VERIFY', 'No records found on-chain', '#eab308', 'complete');
+        return;
+      }
+
+      // Get latest record
+      const callId = (await client.readContract({ address: VERIFY_CONFIG.registry, abi: REGISTRY_ABI, functionName: 'callIds', args: [BigInt(total - 1)] })) as `0x${string}`;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const record = (await client.readContract({ address: VERIFY_CONFIG.registry, abi: REGISTRY_ABI, functionName: 'getRecord', args: [callId] })) as any;
+      addLog('🔍', 'RECORD', `Verifying record #${total} — callId ${callId.slice(0, 10)}…`, '#a78bfa', 'complete');
+      await wait(150);
+
+      // V1: verified flag
+      record.verified ? ok('V1', 'ZK proof verified on-chain ✓') : ng('V1', 'ZK proof NOT verified');
+      await wait(120);
+
+      // V2: Journal hash integrity
+      const computedHash = keccak256(record.journalDataAbi);
+      const hashMatch = computedHash === record.journalHash;
+      hashMatch ? ok('V2', 'Journal hash integrity — keccak256 match') : ng('V2', 'Journal hash MISMATCH');
+      await wait(120);
+
+      // V3: verifyJournal()
+      let journalOk = false;
+      try { journalOk = (await client.readContract({ address: VERIFY_CONFIG.registry, abi: REGISTRY_ABI, functionName: 'verifyJournal', args: [callId, record.journalDataAbi] })) as boolean; } catch { /* */ }
+      journalOk ? ok('V3', 'On-chain journal verification — verifyJournal() → true') : ng('V3', 'verifyJournal() failed');
+      await wait(120);
+
+      // V4: Independent seal re-verification
+      let sealOk = false;
+      try { const digest = sha256(record.journalDataAbi); await client.readContract({ address: verifierAddr, abi: MOCK_VERIFIER_ABI, functionName: 'verify', args: [record.zkProofSeal, imageId, digest] }); sealOk = true; } catch { /* */ }
+      sealOk ? ok('V4', 'Independent seal re-verification — passed') : ng('V4', 'Seal re-verification failed');
+      await wait(120);
+
+      // V5: TLSNotary metadata
+      let provenOk = false;
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const pd = (await client.readContract({ address: VERIFY_CONFIG.registry, abi: REGISTRY_ABI, functionName: 'getProvenData', args: [callId] })) as any;
+        provenOk = pd[0] !== '0x' + '0'.repeat(64) && pd[1] === 'GET' && (pd[2] as string).length > 0 && (pd[5] as string).length > 0;
+      } catch { /* */ }
+      provenOk ? ok('V5', 'TLSNotary metadata valid — GET, data extracted') : ng('V5', 'TLSNotary metadata invalid or missing');
+      await wait(120);
+
+      // V6: Registration TX
+      let eventTxHash: string | null = null;
+      try {
+        const evLogs = await client.getLogs({ address: VERIFY_CONFIG.registry, event: CallDecisionRecordedEvent, args: { callId }, fromBlock: VERIFY_CONFIG.deployBlock, toBlock: 'latest' });
+        if (evLogs.length > 0) eventTxHash = evLogs[0].transactionHash;
+      } catch { /* */ }
+      eventTxHash ? ok('V6', `Registration TX: ${eventTxHash.slice(0, 10)}…${eventTxHash.slice(-6)}`) : ng('V6', 'Registration TX not found');
+      await wait(120);
+
+      // V7: ProofVerified event
+      let proofEvent = false;
+      try {
+        const evLogs = await client.getLogs({ address: VERIFY_CONFIG.registry, event: ProofVerifiedEvent, args: { callId }, fromBlock: VERIFY_CONFIG.deployBlock, toBlock: 'latest' });
+        proofEvent = evLogs.length > 0;
+      } catch { /* */ }
+      proofEvent ? ok('V7', 'ProofVerified event — ZK verification confirmed') : ng('V7', 'ProofVerified event not found');
+      await wait(200);
+
+      // Summary
+      const results = [size > 0, true, true, hasImage, true, record.verified, hashMatch, journalOk, sealOk, provenOk, !!eventTxHash, proofEvent];
+      const passed = results.filter(Boolean).length;
+      addLog('🏁', 'DONE', `Verification complete: ${passed}/${results.length} checks passed`, passed === results.length ? '#22c55e' : '#eab308', 'complete');
+
+    } catch (err: unknown) {
+      addLog('❌', 'ERROR', `Verification failed: ${err instanceof Error ? err.message : String(err)}`, '#ef4444', 'complete');
+    } finally {
+      setIsVerifying(false);
+    }
+  }, [isVerifying, addLog]);
 
   const phaseInfo = {
     connecting: { label: 'Connecting…', color: '#eab308', anim: true },
@@ -339,6 +494,11 @@ export default function DemoPage() {
           )}
           <span style={{ color: current.color, fontWeight: 600 }}>{current.label}</span>
         </div>
+        {phase === 'waiting' && (
+          <span style={{ color: '#06b6d4', fontFamily: 'monospace', fontSize: '0.85rem', letterSpacing: '0.02em' }}>
+            📞 +1 (802) 613-9192
+          </span>
+        )}
         {phase === 'call' && turnCount > 0 && (
           <span style={{ color: '#888', fontSize: '0.8rem' }}>{turnCount} turns</span>
         )}
@@ -350,8 +510,19 @@ export default function DemoPage() {
           <div style={styles.emptyState}>
             <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📞</div>
             <div style={{ color: '#888', fontSize: '1.1rem' }}>Waiting for a phone call…</div>
-            <div style={{ color: '#555', fontSize: '0.85rem', marginTop: '0.5rem' }}>
-              Call the Twilio number to see the live pipeline
+            <a
+              href="tel:+18026139192"
+              style={{
+                display: 'inline-block', marginTop: '1rem', padding: '0.75rem 2rem',
+                borderRadius: '8px', border: '1px solid #06b6d440', background: '#06b6d412',
+                color: '#06b6d4', fontSize: '1.5rem', fontWeight: 700, fontFamily: 'monospace',
+                textDecoration: 'none', letterSpacing: '0.04em',
+              }}
+            >
+              +1 (802) 613-9192
+            </a>
+            <div style={{ color: '#555', fontSize: '0.85rem', marginTop: '0.75rem' }}>
+              Call this number to see the live pipeline in action
             </div>
           </div>
         )}
@@ -417,9 +588,19 @@ export default function DemoPage() {
           </div>
 
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem', flexWrap: 'wrap' }}>
-            <Link href="/verify" style={styles.verifyButton}>
-              🔍 Verify This Record
-            </Link>
+            <button
+              onClick={runVerification}
+              disabled={isVerifying}
+              style={{
+                ...styles.verifyButton,
+                opacity: isVerifying ? 0.6 : 1,
+                cursor: isVerifying ? 'not-allowed' : 'pointer',
+                fontFamily: 'inherit',
+                outline: 'none',
+              }}
+            >
+              {isVerifying ? '⏳ Verifying…' : '🔍 Verify This Record'}
+            </button>
             <a
               href={`${BASESCAN}/tx/${lastTxHash}`}
               target="_blank"

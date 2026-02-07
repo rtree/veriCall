@@ -1,5 +1,19 @@
 # VeriCall
 
+<p align="center">
+  <a href="https://vericall-kkz6k4jema-uc.a.run.app/demo">
+    <img src="https://img.shields.io/badge/▶_LIVE_DEMO-Watch_the_Pipeline-06b6d4?style=for-the-badge" alt="Live Demo" />
+  </a>
+  &nbsp;&nbsp;
+  <a href="https://vericall-kkz6k4jema-uc.a.run.app/verify">
+    <img src="https://img.shields.io/badge/🔍_VERIFY-On--Chain_Check-22c55e?style=for-the-badge" alt="Verify" />
+  </a>
+  &nbsp;&nbsp;
+  <a href="tel:+18026139192">
+    <img src="https://img.shields.io/badge/📞_CALL-+1_(802)_613--9192-eab308?style=for-the-badge" alt="Call" />
+  </a>
+</p>
+
 **Verifiable AI Call Screening — Proving Fairness On-Chain**
 
 ## The Problem
