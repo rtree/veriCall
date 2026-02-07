@@ -20,10 +20,13 @@
 // ─── CLI args ─────────────────────────────────────────────────
 
 const args = process.argv.slice(2);
+const isLocal = args.includes('--local');
 const urlFlag = args.indexOf('--url');
 const BASE_URL = urlFlag !== -1 && args[urlFlag + 1]
   ? args[urlFlag + 1]
-  : 'http://localhost:3000';
+  : isLocal
+    ? 'http://localhost:3000'
+    : 'https://vericall-kkz6k4jema-uc.a.run.app';
 
 const tokenFlag = args.indexOf('--token');
 const DEMO_TOKEN = tokenFlag !== -1 && args[tokenFlag + 1]

@@ -4,7 +4,7 @@
   "description": "AI-powered phone receptionist with on-chain verification via Vlayer",
   "private": true,
   "scripts": {
-    "dev": "tsx watch server.ts",
+    "dev": "rm -f .next/dev/lock && tsx watch server.ts",
     "dev:next": "next dev",
     "build": "next build",
     "start": "node server.js",
