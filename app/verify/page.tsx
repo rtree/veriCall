@@ -30,13 +30,6 @@ function txLink(tx: string) {
 // Constants
 // ═══════════════════════════════════════════════════════════════
 
-const DECISION_COLORS: Record<number, string> = {
-  0: '#888', 1: '#06b6d4', 2: '#f97316', 3: '#eab308',
-};
-const DECISION_EMOJI: Record<number, string> = {
-  0: '❓', 1: '✅', 2: '🛡️', 3: '📝',
-};
-
 // ═══════════════════════════════════════════════════════════════
 // Page
 // ═══════════════════════════════════════════════════════════════
@@ -183,9 +176,9 @@ export default function VerifyPage() {
             <div style={styles.contractMeta}>
               <span><span style={{ color: '#888' }}>Records</span> <strong>{state.contract.stats.total}</strong></span>
               <span style={{ color: '#1a1a1a' }}>|</span>
-              <span style={{ color: '#06b6d4' }}>{state.contract.stats.accepted} accepted</span>
-              <span style={{ color: '#f97316' }}>{state.contract.stats.blocked} blocked</span>
-              <span style={{ color: '#eab308' }}>{state.contract.stats.recorded} recorded</span>
+              <span style={{ color: '#ccc' }}>{state.contract.stats.accepted} accepted</span>
+              <span style={{ color: '#ccc' }}>{state.contract.stats.blocked} blocked</span>
+              <span style={{ color: '#ccc' }}>{state.contract.stats.recorded} recorded</span>
             </div>
             <div style={styles.contractChecksInline}>
               {state.contract.checks.map(c => (
@@ -221,7 +214,6 @@ export default function VerifyPage() {
               {sorted.map(rec => {
                 const isSelected = selectedIdx === rec.index;
                 const allOk = rec.checks.every(c => c.status === 'pass' || c.status === 'skip');
-                const decColor = DECISION_COLORS[rec.decision] || '#888';
                 return (
                   <div
                     key={rec.index}
@@ -238,9 +230,12 @@ export default function VerifyPage() {
                         <span style={{ color: allOk ? '#22c55e' : '#ef4444', fontWeight: 600 }}>
                           {allOk ? '✓' : '✗'}
                         </span>
+                        <span style={{ color: allOk ? '#22c55e' : '#ef4444', fontSize: '0.8rem', fontWeight: 600 }}>
+                          {allOk ? 'Verified' : 'Failed'}
+                        </span>
                         <span style={{ fontWeight: 500 }}>#{rec.index}</span>
-                        <span style={{ color: decColor, fontWeight: 600, fontSize: '0.85rem' }}>
-                          {DECISION_EMOJI[rec.decision]} {rec.decisionLabel}
+                        <span style={{ color: '#ccc', fontSize: '0.85rem' }}>
+                          {rec.decisionLabel}
                         </span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -366,7 +361,7 @@ npx tsx scripts/verify.ts`}
 // ═══════════════════════════════════════════════════════════════
 
 function RecordDetail({ record }: { record: RecordData }) {
-  const decColor = DECISION_COLORS[record.decision] || '#888';
+  const allOk = record.checks.every(c => c.status === 'pass' || c.status === 'skip');
 
   return (
     <div style={styles.recordCard}>
@@ -375,11 +370,16 @@ function RecordDetail({ record }: { record: RecordData }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <span style={{ fontSize: '1.1rem', fontWeight: 600 }}>Record #{record.index}</span>
           <span style={{
-            color: decColor, fontWeight: 700, fontSize: '0.9rem',
+            color: '#ccc', fontWeight: 600, fontSize: '0.9rem',
             padding: '0.2rem 0.6rem', borderRadius: '999px',
-            background: `${decColor}15`, border: `1px solid ${decColor}30`,
+            background: '#ffffff08', border: '1px solid #333',
           }}>
-            {DECISION_EMOJI[record.decision]} {record.decisionLabel}
+            {record.decisionLabel}
+          </span>
+          <span style={{
+            color: allOk ? '#22c55e' : '#ef4444', fontWeight: 700, fontSize: '0.8rem',
+          }}>
+            {allOk ? '✓ Verified' : '✗ Failed'}
           </span>
         </div>
       </div>
