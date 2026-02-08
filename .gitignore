@@ -45,3 +45,6 @@ cache/
 playground/*.log
 scripts/setup-gcp-workload-identity.sh
 DEPLOYER_PRIVATE_KEY
+
+# Playwright MCP temp files
+.playwright-mcp/

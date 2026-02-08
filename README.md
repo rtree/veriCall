@@ -12,6 +12,8 @@
 
 **Verifiable AI Call Screening — Proving Fairness On-Chain**
 
+<img width="1000" alt="VeriCall Live Demo — full pipeline from phone call to on-chain record" src="docs/screenshots/demo-pipeline-complete.png" />
+
 ## The Problem
 
 Companies use AI to screen phone calls — blocking spam while forwarding legitimate business. But who watches the AI?
@@ -46,8 +48,6 @@ This pattern — **proving that an AI made a specific decision given specific in
 | 🏦 Loan Decisions | AI fairly assessed creditworthiness |
 | 🛡️ Content Moderation | AI fairly applied guidelines |
 | ⚖️ Insurance Claims | AI fairly processed claim |
-
-<img width="1000" alt="VeriCall Demo Screenshot" src="https://github.com/user-attachments/assets/46d9b0ca-4f05-4421-b9ff-fdf643d71228" />
 
 ## What Gets Proven
 
@@ -173,11 +173,11 @@ Open **[/demo](https://vericall-kkz6k4jema-uc.a.run.app/demo)** — call the num
 
 📞 Call → 🤖 AI → ⚖️ Decision → 🔐 WebProof → 🧮 ZK → ⛓️ On-Chain
 
-<img width="1000" alt="image" src="https://github.com/user-attachments/assets/47026f4e-58e2-47b7-b505-8e490054e4e1" />
-
 ### 🔍 Verify Records
 
 Open **[/verify](https://vericall-kkz6k4jema-uc.a.run.app/verify)** — runs 12 automated checks per record, entirely client-side. No wallet, no API keys.
+
+<img width="1000" alt="Independent Verification — 45/45 checks passed on Base Sepolia" src="docs/screenshots/verify-all-checks-passed.png" />
 
 ```bash
 npx tsx scripts/verify.ts          # verify all on-chain records
@@ -227,6 +227,23 @@ This project was built with AI assistance (GitHub Copilot / Claude). Per ETHGlob
 | **Debugging** | Log analysis, error diagnosis, Gemini output format investigation |
 
 All architectural decisions, system design, and verification logic were human-directed. AI accelerated implementation and documentation — it did not independently design the proof pipeline or contract validation.
+
+<details>
+<summary><strong>More Screenshots</strong></summary>
+
+**On-Chain Transaction (BaseScan)**
+
+<img width="800" alt="BaseScan transaction details" src="docs/screenshots/basescan-tx.png" />
+
+**Email Notification (Scam Alert)**
+
+<img width="500" alt="Email scam alert notification" src="docs/screenshots/email-scam-alert.png" />
+
+**Verification Record Detail (V1–V3 checks)**
+
+<img width="800" alt="Per-record verification checks" src="docs/screenshots/verify-record-detail.png" />
+
+</details>
 
 ## License
 
