@@ -11,12 +11,16 @@
 </p>
 
 
-**Hello! HackMoney 2026! but money is *already* being hacked — by Scam Phone Call approx. $16 B in 2024 alone (FBI IC3). A "Mathematical Gatekeeper" — Protecting Your Family from AI Scams with Verifiable Trust**
+**Hello! HackMoney 2026! but money is *already* being hacked**
 
-We built a AI wall for protecting that Money.
+**— by Scam Phone Call, $16 B in 2024 alone (FBI IC3).**
 
-> **We don't prove the AI is correct. We prove the operator can't secretly change the story afterward.**
-> *— AI decision non-repudiation + public accountability, anchored on-chain.*
+**We built a AI wall for protecting that Money. A "Mathematical Gatekeeper"**
+
+**— Protecting Your Family from AI Scams with Verifiable Trust**
+
+
+AI decision non-repudiation + public accountability, anchored on-chain.
 
 <img width="1000" alt="VeriCall Live Demo — full pipeline from phone call to on-chain record" src="docs/screenshots/demo-pipeline-complete.png" />
 
