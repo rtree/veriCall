@@ -65,21 +65,24 @@ This pattern — **committing an AI decision, its inputs, and its rules to an im
 
 **What the proofs guarantee:**
 - VeriCall's server genuinely returned this specific decision and reasoning (TLSNotary attestation — a third-party Notary cryptographically confirms the HTTPS response)
-- The server committed to a specific AI ruleset hash and transcript hash at proof time
+- The server committed to a specific AI ruleset hash, transcript hash, and **source code commit** at proof time
 - The on-chain record exactly matches the attested response (Decision–Journal Binding via `keccak256`)
 - The record is immutable — VeriCall cannot retroactively alter any committed field
+- **The source code version is proven on-chain** — anyone can read the exact code at `github.com/rtree/veriCall/tree/<commit>`
+
+**What becomes verifiable through public source code (V4):**
+- `systemPromptHash` — open [`lib/voice-ai/gemini.ts`](lib/voice-ai/gemini.ts#L124) at the proven commit, read `GeminiChat.getSystemPrompt()`, compute SHA-256, compare with on-chain value. **If they don't match, the server lied about its commit.**
+- `transcriptHash` — the hashing logic is in [`app/api/witness/decision/[callSid]/route.ts`](app/api/witness/decision/%5BcallSid%5D/route.ts#L30). The pipeline from audio → transcript is in [`lib/voice-ai/session.ts`](lib/voice-ai/session.ts). All readable at the proven commit.
+- Decision logic — the AI screening rules, Gemini API parameters, and response parsing are all visible in the source code at the proven commit.
 
 **What the proofs do NOT guarantee (today):**
-- That the AI model internally computed the decision honestly — TLSNotary proves what the *server returned*, not what the *model computed*. This is a fundamental limitation of all Web Proof–based systems.
-- That `systemPromptHash` corresponds to the actual prompt sent to the AI — the server self-reports this hash. However, if VeriCall publishes the system prompt, anyone can hash it and compare with the on-chain value.
-- That `transcriptHash` corresponds to the actual Twilio audio — the server self-reports this hash.
+- That the deployed binary *exactly* matches the proven commit — this would require reproducible builds or TEE. However, if the binary differs, the behavior will diverge from the public code — a detectable inconsistency.
+- That the AI model internally computed the decision honestly — TLSNotary proves what the *server returned*, not what the *model computed*. But the source code *shows* a Gemini API call — any deviation is a falsified commit.
 
-**Why this still matters:**
+**Why this matters:**
 Today, AI call screening is a black box — the company controls the AI, the rules, and the logs. A blocked caller has no recourse and no evidence.
 
-VeriCall creates **public accountability**. The server is cryptographically locked into a specific (decision, reason, ruleset hash, transcript hash) tuple at a specific time. If the published system prompt doesn't match the on-chain hash, that discrepancy is publicly detectable. VeriCall can't secretly change its screening rules per caller, and can't deny or alter a decision after the fact.
-
-This is strictly better than the status quo ("trust us") — though it falls short of full AI inference verification, which remains an open research problem across the industry.
+VeriCall creates **public accountability**. The server is cryptographically locked into `(decision, reason, systemPromptHash, transcriptHash, sourceCodeCommit)` at a specific time. The source code at that commit is public — anyone can read the screening rules, hash them, and verify against on-chain values. VeriCall can't secretly change its screening rules per caller, and can't deny or alter a decision after the fact. This is **immutable commitment + auditable source code** — significantly stronger than simple server attestation.
 
 ### 🔗 GitHub Code Attestation
 

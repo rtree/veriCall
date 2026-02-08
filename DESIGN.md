@@ -787,7 +787,7 @@ VeriCall's contract is **already designed for this upgrade** — the `verifier` 
 
 ### 3.10 Trust Model: What Is and Isn't Proven
 
-> This section documents the exact trust boundaries of VeriCall's architecture. Every Web Proof–based system (not just VeriCall) has these same fundamental boundaries — TLSNotary proves what a server returned, not what the server internally computed.
+> This section documents the exact trust boundaries of VeriCall's architecture. V4's GitHub Code Attestation significantly narrows the trust gap compared to typical Web Proof systems — because the source code is public and the commit SHA is proven on-chain.
 
 #### What Is Cryptographically Proven
 
@@ -797,26 +797,43 @@ VeriCall's contract is **already designed for this upgrade** — the `verifier` 
 | **The on-chain record matches the attested response** | Decision–Journal Binding — `keccak256` match between submitted decision/reason and proven journal fields (checks 11–12 in §3.9) |
 | **The proof targets VeriCall's API** | URL prefix validation, HTTP method check, Notary fingerprint check (checks 4–7 in §3.9) |
 | **Record is immutable** | On-chain storage — once registered, no function can modify a `CallRecord` |
+| **Which code version the server claims to run** | `provenSourceCodeCommit` — git commit SHA embedded at build time, attested by TLSNotary, stored on-chain. Non-empty enforced (check 10 in §3.9). |
 
-#### What Is Server-Attested (Not Independently Verified)
+#### What Is Code-Auditable (V4: Verifiable via Public Source Code)
+
+> V4 introduces a new trust category: claims that aren't independently *proven* by cryptography alone, but can be **independently verified by reading the public source code** at the proven commit. If the server lies about its commit, the code won't match observed behavior — a detectable lie.
+
+| Claim | How to Verify | Trust Assumption |
+|-------|--------------|------------------|
+| `systemPromptHash` is the hash of the actual AI rules | Open [`lib/voice-ai/gemini.ts`](https://github.com/rtree/veriCall/blob/master/lib/voice-ai/gemini.ts#L124) at the proven commit → read `GeminiChat.getSystemPrompt()` → compute SHA-256 → compare with on-chain `provenSystemPromptHash`. The hash computation itself is in [`lib/witness/decision-store.ts`](https://github.com/rtree/veriCall/blob/master/lib/witness/decision-store.ts#L46). | The server actually runs the code at that commit. (Falsifying the commit = publicly detectable lie.) |
+| `transcriptHash` is the hash of the actual conversation | The transcript hashing logic is in [`app/api/witness/decision/[callSid]/route.ts`](https://github.com/rtree/veriCall/blob/master/app/api/witness/decision/%5BcallSid%5D/route.ts#L30) — `crypto.createHash('sha256').update(record.transcript)`. The pipeline from Twilio audio → STT → transcript is in [`lib/voice-ai/session.ts`](https://github.com/rtree/veriCall/blob/master/lib/voice-ai/session.ts). | Same as above. Additionally, the audio → text conversion depends on Google STT (not independently attestable yet). |
+| The decision logic is what VeriCall claims | Read [`lib/voice-ai/gemini.ts`](https://github.com/rtree/veriCall/blob/master/lib/voice-ai/gemini.ts) — the system prompt, Gemini API parameters, and response parsing are all visible. The screening criteria are embedded in the code. | Same as above. LLM non-determinism means the exact output can't be predicted, but the *rules* and *parameters* are public. |
+
+#### What Remains Server-Attested (Not Independently Verified)
 
 | Claim | Why It's Not Independently Verified | Mitigation |
 |-------|-------------------------------------|------------|
-| `systemPromptHash` is the hash of the actual AI rules | The server self-computes this hash; the contract only checks non-empty | VeriCall publishes the system prompt — anyone can hash it and compare with the on-chain value. Discrepancies are publicly detectable. |
-| `transcriptHash` is the hash of the actual conversation | The server self-computes this hash from Twilio audio; no independent audio attestation | Future: Twilio webhook signature verification could bind the audio source. For now, the server commits to a specific hash at proof time. |
-| The AI model genuinely computed the decision | TLSNotary proves the server *response*, not the internal *inference*. The server could theoretically return a fabricated decision. | This is a fundamental limitation of all Web Proof–based AI systems. Full AI inference verification would require TEEs or verifiable inference (open research). VeriCall's contribution is making the server's *commitment* immutable and publicly auditable. |
+| The deployed binary actually matches the proven commit | TLSNotary proves the commit SHA in the API response, not the running binary. The server *could* run modified code while claiming the public commit. | Would require reproducible builds or TEE (Level 3). However: if the binary doesn't match the source, the *behavior* will differ from what the code says — which is detectable by anyone running the same code against the same inputs. |
+| The AI model genuinely computed the decision | TLSNotary proves the server *response*, not the internal *inference*. The server could theoretically hardcode a response without calling Gemini. | Full AI inference verification requires TEE or ZK inference (Level 3–4). VeriCall's contribution: the source code *shows* a Gemini API call, and any deviation from that code path is a falsified commit — publicly detectable. |
 
-#### Why This Architecture Is Still Valuable
+#### Why V4's Trust Model Is Significantly Stronger Than V3
+
+**V3 (server attestation only)**: "VeriCall says it used these rules and this transcript. Here are the hashes. Trust us, or wait for us to publish the prompt separately."
+
+**V4 (server attestation + code attestation)**: "The server claims to run commit `fb6d3e0`. At that commit, [`gemini.ts` line 124](https://github.com/rtree/veriCall/blob/master/lib/voice-ai/gemini.ts#L124) contains the exact system prompt. [`decision-store.ts` line 46](https://github.com/rtree/veriCall/blob/master/lib/witness/decision-store.ts#L46) shows how the hash is computed. [`route.ts` line 30](https://github.com/rtree/veriCall/blob/master/app/api/witness/decision/%5BcallSid%5D/route.ts#L30) shows how the transcript hash is computed. **If any of these don't match on-chain values, the server is provably lying about its commit.**"
+
+The key difference: in V3, verifying hashes required VeriCall to *separately publish* the pre-images. In V4, the pre-images are *embedded in the source code* at the proven commit — verification is self-contained.
 
 **Status quo** (no VeriCall): Company says "our AI made this decision" → caller has no evidence, no recourse, no way to detect rule changes.
 
-**With VeriCall**: Company's server is cryptographically locked into `(decision, reason, systemPromptHash, transcriptHash)` at a specific timestamp. The company cannot:
+**With VeriCall V4**: Company's server is cryptographically locked into `(decision, reason, systemPromptHash, transcriptHash, sourceCodeCommit)` at a specific timestamp. The company cannot:
 - Retroactively change what decision was made
 - Deny the reasoning that was given
-- Secretly apply different rules to different callers (if rule hash changes, it's publicly visible)
+- Secretly apply different rules to different callers (commit change is visible on-chain)
 - Alter which conversation was evaluated (hash is committed)
+- Claim to run different code than what's published (commit is proven, code is public)
 
-This is **public accountability through immutable commitment** — strictly better than the status quo, even though it falls short of full AI inference verification.
+This is **public accountability through immutable commitment + auditable source code** — a meaningful step beyond simple server attestation.
 
 #### 🔗 GitHub Code Attestation: Source Code Accountability
 
