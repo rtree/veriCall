@@ -49,9 +49,9 @@ const BASESCAN = 'https://sepolia.basescan.org';
 
 // ── Verification config (self-contained, same as /verify) ────
 const VERIFY_CONFIG = {
-  registry: '0x9beb87effdac68baf13b505b7e1515f9d43e6ad2' as `0x${string}`,
-  mockVerifier: '0xd447c1342f7350ec5f0af60f8ed98e33b8c78ea1' as `0x${string}`,
-  deployBlock: BigInt(37354216),
+  registry: '0x9a6015c6a0f13a816174995137e8a57a71250b81' as `0x${string}`,
+  mockVerifier: '0xea998b642b469736a3f656328853203da3d92724' as `0x${string}`,
+  deployBlock: BigInt(37374494),
   rpcUrl: 'https://sepolia.base.org',
 } as const;
 
@@ -62,7 +62,7 @@ const REGISTRY_ABI = [
   { type: 'function', name: 'verifier', inputs: [], outputs: [{ name: '', type: 'address' }], stateMutability: 'view' },
   { type: 'function', name: 'callIds', inputs: [{ name: '', type: 'uint256' }], outputs: [{ name: '', type: 'bytes32' }], stateMutability: 'view' },
   { type: 'function', name: 'getRecord', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: '', type: 'tuple', components: [{ name: 'decision', type: 'uint8' }, { name: 'reason', type: 'string' }, { name: 'journalHash', type: 'bytes32' }, { name: 'zkProofSeal', type: 'bytes' }, { name: 'journalDataAbi', type: 'bytes' }, { name: 'sourceUrl', type: 'string' }, { name: 'timestamp', type: 'uint256' }, { name: 'submitter', type: 'address' }, { name: 'verified', type: 'bool' }] }], stateMutability: 'view' },
-  { type: 'function', name: 'getProvenData', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: 'notaryKeyFingerprint', type: 'bytes32' }, { name: 'method', type: 'string' }, { name: 'url', type: 'string' }, { name: 'proofTimestamp', type: 'uint256' }, { name: 'queriesHash', type: 'bytes32' }, { name: 'provenDecision', type: 'string' }, { name: 'provenReason', type: 'string' }], stateMutability: 'view' },
+  { type: 'function', name: 'getProvenData', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: 'notaryKeyFingerprint', type: 'bytes32' }, { name: 'method', type: 'string' }, { name: 'url', type: 'string' }, { name: 'proofTimestamp', type: 'uint256' }, { name: 'queriesHash', type: 'bytes32' }, { name: 'provenDecision', type: 'string' }, { name: 'provenReason', type: 'string' }, { name: 'provenSystemPromptHash', type: 'string' }, { name: 'provenTranscriptHash', type: 'string' }, { name: 'provenSourceCodeCommit', type: 'string' }], stateMutability: 'view' },
   { type: 'function', name: 'verifyJournal', inputs: [{ name: 'callId', type: 'bytes32' }, { name: 'journalData', type: 'bytes' }], outputs: [{ name: '', type: 'bool' }], stateMutability: 'view' },
 ] as const;
 
@@ -375,7 +375,7 @@ export default function DemoPage() {
       }
 
       // ─── Phase 2: Record Verification ─────────────────
-      addLog('📋', 'PHASE 2', `Per-record verification (V1–V7) — latest record #${total}`, '#a78bfa', 'complete');
+      addLog('📋', 'PHASE 2', `Per-record verification (V1–V8) — latest record #${total}`, '#a78bfa', 'complete');
       await wait(200);
 
       const callId = (await client.readContract({ address: VERIFY_CONFIG.registry, abi: REGISTRY_ABI, functionName: 'callIds', args: [BigInt(total - 1)] })) as `0x${string}`;
@@ -482,10 +482,28 @@ export default function DemoPage() {
       proofEvent ? ok('V7', 'ProofVerified event — ZK proof validated by contract') : ng('V7', 'ProofVerified event not found');
       if (proofEventImageId) sub(`Event imageId: ${String(proofEventImageId).slice(0, 14)}…`);
       if (proofEventDigest) sub(`Event journalDigest: ${String(proofEventDigest).slice(0, 14)}…`);
+      await wait(120);
+
+      // V8: GitHub Code Attestation — source code commit
+      let sourceCommitOk = false;
+      let sourceCommit = '';
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const pd = (await client.readContract({ address: VERIFY_CONFIG.registry, abi: REGISTRY_ABI, functionName: 'getProvenData', args: [callId] })) as any;
+        sourceCommit = (pd[9] as string) || '';
+        sourceCommitOk = /^[0-9a-f]{7,40}$/i.test(sourceCommit);
+      } catch { /* V3 contracts won't have this field */ }
+      sourceCommitOk
+        ? ok('V8', `GitHub Code Attestation — source code commit proven on-chain`)
+        : ng('V8', 'Source code commit not found or invalid');
+      if (sourceCommit) {
+        sub(`Commit: ${sourceCommit.slice(0, 7)}…${sourceCommit.slice(-4)}`);
+        sub(`🔗 Inspect source code`, `https://github.com/rtree/veriCall/tree/${sourceCommit}`);
+      }
       await wait(250);
 
       // ─── Summary ──────────────────────────────────────
-      const results = [size > 0, true, true, hasImage, true, record.verified, hashMatch, journalOk, sealOk, provenOk, decisionMatch, !!eventTxHash, proofEvent];
+      const results = [size > 0, true, true, hasImage, true, record.verified, hashMatch, journalOk, sealOk, provenOk, decisionMatch, !!eventTxHash, proofEvent, sourceCommitOk];
       const passed = results.filter(Boolean).length;
       const perfect = passed === results.length;
       addLog(perfect ? '🏁' : '⚠️', 'DONE', `Verification complete: ${passed}/${results.length} checks passed`, perfect ? '#22c55e' : '#eab308', 'complete');

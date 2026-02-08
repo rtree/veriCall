@@ -272,6 +272,7 @@ export default function VerifyPage() {
                   <div><code>V5</code> TLSNotary HTTP metadata is well-formed and non-trivial</div>
                   <div><code>V6</code> Registration transaction is findable on-chain</div>
                   <div><code>V7</code> ProofVerified event confirms ZK verification happened</div>
+                  <div><code>V8</code> <strong>GitHub Code Attestation</strong> — git commit SHA proven on-chain, linking to auditable source code</div>
                 </div>
               </div>
             </div>
