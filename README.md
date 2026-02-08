@@ -222,7 +222,10 @@ The proof pipeline is domain-agnostic; only the screening rules change.
 | **Chain** | Base Sepolia · viem · VeriCallRegistry (Solidity / Foundry) |
 | **CI/CD** | GitHub Actions · Workload Identity Federation · `git rev-parse HEAD` → build arg |
 
-→ [Getting started & deployment](docs/DEPLOY.md) · [Full project structure & design](DESIGN.md)
+## Technical Detail
+
+- [Full project structure & design](DESIGN.md)
+- [Getting started & deployment](docs/DEPLOY.md)
 
 ## Status & Roadmap
 

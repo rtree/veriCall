@@ -62,8 +62,19 @@ This allows anyone to verify that VeriCall's server committed to this decision �
                                              └───→│ Base Sepolia         │
                                                   │ VeriCallRegistry     │
                                                   │ (on-chain record)    │
+                                                  └──────────┬───────────┘
+                                                             │
+                                                  ┌──────────▼───────────┐
+                                                  │ Anyone can verify:   │
+                                                  │ • BaseScan (record)  │
+                                                  │ • GitHub (source at  │
+                                                  │   proven commit)     │
+                                                  │   → read AI rules,   │
+                                                  │     recompute hashes │
                                                   └──────────────────────┘
 ```
+
+> **GitHub Code Attestation (§3.10)**: Every on-chain record contains `provenSourceCodeCommit` — the git commit SHA of VeriCall's source code, attested by TLSNotary and stored on-chain. Anyone can visit `github.com/rtree/veriCall/tree/<commit>` to read the exact screening rules, hash computation logic, and Decision API code that produced the decision.
 
 ### 1.3 Why This Architecture?
 
@@ -207,6 +218,8 @@ Response JSON:
 
 **Why Cloud SQL is needed**: The vlayer Web Prover accesses this URL via an external HTTP GET.
 Cloud Run instance memory is not persistent, so decision data must be stored in a database.
+
+> **`sourceCodeCommit`**: The git commit SHA is injected at Docker build time (`--build-arg SOURCE_CODE_COMMIT=$(git rev-parse HEAD)` in GitHub Actions), carried through as an environment variable, and embedded in every Decision API response. This enables **GitHub Code Attestation** — linking every on-chain record to an auditable code version. See §3.10 for the full lifecycle.
 
 > **What this proves**: Nothing yet — this is the data source that the vlayer Web Prover will fetch and cryptographically attest to. The key point is that this URL is served via HTTPS (TLS), making it eligible for TLSNotary attestation.
 
@@ -640,7 +653,7 @@ git push origin master
                                                                      │
             ⑨                                                        │
   Verify    ←───────────────────────────────────────────────────────┘
-  (CLI / Explorer / BaseScan)
+  (CLI / Explorer / BaseScan / GitHub source at proven commit)
 ```
 
 | Step | Processing | Estimated Time |
@@ -653,7 +666,7 @@ git push origin master
 | ⑥ | vlayer ZK Proof (RISC Zero → Groth16) | 30–120s |
 | ⑦ | Base Sepolia TX submission + confirmation | 2–5s |
 | ⑧ | On-chain recording complete | — |
-| ⑨ | CLI / Explorer verification | ~2s |
+| ⑨ | Verify: CLI / Explorer / BaseScan + **GitHub source at `provenSourceCodeCommit`** (§3.10) | ~2s |
 
 **Total**: From call end to ⑧ completion, approximately 1–3 minutes (⑤–⑦ run in the background, not blocking the call).
 
