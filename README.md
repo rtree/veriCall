@@ -17,17 +17,17 @@
 
 <img width="1000" alt="VeriCall Live Demo — full pipeline from phone call to on-chain record" src="docs/screenshots/demo-pipeline-complete.png" />
 
-## 🌍 The Crisis
+## 📞 The Problem
 
-**Voice is no longer proof of identity.**
+Phone calls remain one of the most universal communication tools — used across all generations, from grandparents to business professionals. But **trust in phone calls is quietly eroding**.
 
-"Voice Cloning" scams are surging worldwide. Scammers copy a family member's voice from a short sample — then call with fabricated emergencies: fake accidents, fake arrests, fake hospital bills. People in panic cannot think clearly. These attacks exploit human emotions with surgical precision.
+Spam, robocalls, and impersonation fraud have made people hesitant to pick up unknown numbers. And now, AI voice synthesis is lowering the barrier further — making it possible to fake a familiar voice from a short sample.
 
-- 🇺🇸 **"Grandparent Scams"** — USA: $3.4B lost to phone fraud annually (FTC 2023)
-- 🇪🇺 **"Impersonation Scams"** — Europe: AI-generated voice fraud rising sharply
-- 🇯🇵 **"オレオレ詐欺"** — Japan: decades-old scam supercharged by AI voice synthesis
+- 🇺🇸 **"Grandparent Scams"** — USA: phone fraud costs billions annually
+- 🇪🇺 **"Impersonation Scams"** — Europe: AI-generated voice fraud is emerging
+- 🇯🇵 **"オレオレ詐欺"** — Japan: a decades-old problem now amplified by voice AI
 
-We cannot protect our families only by saying *"Be careful"* against these technical attacks. We need a **technical shield**.
+The phone itself is not the problem — **the lack of verifiable trust is**. When you can't confirm who's really calling or what really happened on a call, the phone becomes less useful for everyone.
 
 ## 🛡️ The Solution: A Mathematical Gatekeeper
 
