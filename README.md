@@ -78,18 +78,17 @@ This pattern — **proving that an AI made a specific decision given specific in
                     ▼                          ▼
            📧 Email Notify          Decision API (HTTPS)
                                                │
-                              ┌────────────────┤
-                              │                │
-                              ▼                ▼
-                        vlayer Web       vlayer ZK
-                        Prover           Prover
-                       (TLSNotary)      (RISC Zero)
-                              │                │
-                              └───────┬────────┘
-                                      │
-                                      ▼
-                              Base Sepolia
-                           VeriCallRegistryV3
+                                               ▼
+                                      vlayer Web Prover
+                                        (TLSNotary)
+                                               │
+                                               ▼
+                                      vlayer ZK Prover
+                                        (RISC Zero)
+                                               │
+                                               ▼
+                                      Base Sepolia
+                                   VeriCallRegistryV3
 ```
 
 ## How It Works
@@ -118,17 +117,17 @@ This is VeriCall's core technical contribution. The contract doesn't just store 
 
 The ZK proof produces an ABI-encoded journal. All 9 fields are decoded and validated on-chain:
 
-| Field | What It Proves |
-|-------|----------------|
-| `notaryKeyFingerprint` | Which TLSNotary signed the proof |
-| `method` | HTTP method was `GET` |
-| `url` | Points to VeriCall's Decision API |
-| `timestamp` | TLS session time (not self-reported) |
-| `queriesHash` | JMESPath extraction config is correct |
-| `provenDecision` | `"BLOCK"` / `"RECORD"` — from the API response |
-| `provenReason` | AI reasoning — from the API response |
-| `provenSystemPromptHash` | SHA-256 of AI ruleset — from the response |
-| `provenTranscriptHash` | SHA-256 of conversation — from the response |
+| Field | What It Proves | How It's Verified |
+|-------|----------------|-------------------|
+| `notaryKeyFingerprint` | Which TLSNotary signed the proof | Contract checks against `EXPECTED_NOTARY_KEY_FP` immutable constant |
+| `method` | HTTP method was `GET` | Contract checks `keccak256(method) == keccak256("GET")` |
+| `url` | Points to VeriCall's Decision API | Contract checks URL starts with `expectedUrlPrefix` (byte-by-byte) |
+| `timestamp` | TLS session time (not self-reported) | Embedded by TLSNotary during MPC — neither client nor server can forge |
+| `queriesHash` | JMESPath extraction config is correct | Contract checks against `expectedQueriesHash` constant |
+| `provenDecision` | `"BLOCK"` / `"RECORD"` — from the API response | Contract binds to submitted `decision` via `keccak256` match (Steps I–J) |
+| `provenReason` | AI reasoning — from the API response | Contract binds to submitted `reason` via `keccak256` match (Steps I–J) |
+| `provenSystemPromptHash` | SHA-256 of AI ruleset — from the response | Contract requires non-empty; anyone can hash published rules and compare |
+| `provenTranscriptHash` | SHA-256 of conversation — from the response | Contract requires non-empty; proves which conversation the AI evaluated |
 
 ### What the Contract Checks
 
