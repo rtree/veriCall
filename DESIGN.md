@@ -337,20 +337,20 @@ Output example:
 ```
 ━━━ Record #2 ━━━━━━━━━━━━━━━━━━━━
   Call ID:     0x8a3f2b...
-  Decision:    🚫 BLOCK
+  Decision:    BLOCK
   Reason:      Caller was selling SEO services...
   Time:        2026-02-07T10:30:00Z
 
-  📡 Proven Data (from ZK Journal):
+  Proven Data (from ZK Journal):
   Source:      https://vericall-.../api/witness/decision/CA...
   Method:      GET
   Values:
-    📄 BLOCK
-    📄 Caller was selling SEO services...
+    BLOCK
+    Caller was selling SEO services...
 
-  🔐 ZK Proof:
+  ZK Proof:
   Seal:        0x1a2b3c4d5e6f...
-  Integrity:   ✅ Journal hash matches on-chain commitment
+  Integrity:   [PASS] Journal hash matches on-chain commitment
 ```
 
 #### Explorer API
@@ -496,14 +496,14 @@ veriCall/
 │   ├── config.ts                       # Shared configuration
 │   ├── db.ts                           # Cloud SQL client (IAM auth)
 │   ├── voice-ai/
-│   │   ├── session.ts                  # Call session management (★ core)
+│   │   ├── session.ts                  # Call session management (core)
 │   │   ├── gemini.ts                   # Gemini AI (screening decisions)
 │   │   ├── speech-to-text.ts           # Google Cloud STT
 │   │   ├── text-to-speech.ts           # Google Cloud TTS
 │   │   ├── audio-utils.ts             # μ-law ↔ Linear16 conversion
 │   │   └── email-notify.ts            # SendGrid email notification
 │   └── witness/
-│       ├── pipeline.ts                 # Witness pipeline (★ proof generation)
+│       ├── pipeline.ts                 # Witness pipeline (proof generation)
 │       ├── vlayer-api.ts               # vlayer REST API client
 │       ├── on-chain.ts                 # Base Sepolia TX submission
 │       ├── decision-store.ts           # Cloud SQL decision data store
@@ -882,9 +882,9 @@ Anyone:       github.com/rtree/veriCall/tree/fb6d3e0 → read the code
 
 | Level | What It Proves | Status |
 |-------|----------------|--------|
-| **A. Commit Embedding** | Server *claims* to be running commit X; TLSNotary seals that claim; contract stores it on-chain | **✅ Implemented (V4)** |
-| **B. Commit Existence** | Commit X *actually exists* on GitHub — independently proven via TLSNotary → `api.github.com` | **✅ PoC confirmed** (Web Proof in 61s), deferred |
-| **C. Code Content** | Source code *content* at commit X has hash Y — proven via TLSNotary → `raw.githubusercontent.com` | **⚠️ Partially confirmed** (Web Proof OK, ZK fails — raw text isn't JSON, JMESPath requires JSON) |
+| **A. Commit Embedding** | Server *claims* to be running commit X; TLSNotary seals that claim; contract stores it on-chain | **Implemented (V4)** |
+| **B. Commit Existence** | Commit X *actually exists* on GitHub — independently proven via TLSNotary → `api.github.com` | **PoC confirmed** (Web Proof in 61s), deferred |
+| **C. Code Content** | Source code *content* at commit X has hash Y — proven via TLSNotary → `raw.githubusercontent.com` | **Partially confirmed** (Web Proof OK, ZK fails — raw text isn't JSON, JMESPath requires JSON) |
 
 **Why Level A is already valuable:**
 
@@ -912,8 +912,8 @@ Anyone:       github.com/rtree/veriCall/tree/fb6d3e0 → read the code
 
 ```
 Level 0:   "Trust us"                                    ← Status quo (all AI screening today)
-Level 1:   Server commitment attested by TLSNotary        ← VeriCall V3 ✅
-Level 1.5: + Source code attested via GitHub + TLSNotary   ← VeriCall V4 ✅ (current)
+Level 1:   Server commitment attested by TLSNotary        ← VeriCall V3 [done]
+Level 1.5: + Source code attested via GitHub + TLSNotary   ← VeriCall V4 [done] (current)
 Level 2:   AI provider response attested by TLSNotary     ← vlayer POST support (near-term)
 Level 3:   AI inference proven in TEE                      ← TEE integration (medium-term)
 Level 4:   AI inference proven in ZK                       ← Verifiable inference (long-term)
@@ -987,7 +987,7 @@ Total: 36 bytes
 Experiment: Executed on Base Sepolia
   contract: RiscZeroVerifierRouter (0x0b144e07a0826182b6b59788c34b32bfa86fb711)
   call:     verify(seal, guestId, sha256(journal))
-  result:   ❌ REVERTED (error signature: 0xe4ea6542)
+  result:   REVERTED (error signature: 0xe4ea6542)
 ```
 
 #### The MockVerifier Pattern
@@ -1395,10 +1395,10 @@ struct CallRecord {
     │  verifier.verify(zkProofSeal, imageId, journalDigest);       │
     │                                                              │
     │  MockVerifier:                                               │
-    │    require(bytes4(seal[:4]) == 0xFFFFFFFF)  → ✅ PASS        │
+    │    require(bytes4(seal[:4]) == 0xFFFFFFFF)  → PASS           │
     │                                                              │
     │  ProductionVerifier (future):                                │
-    │    Groth16 BN254 pairing check  → ✅ PASS or ❌ REVERT      │
+    │    Groth16 BN254 pairing check  → PASS or REVERT            │
     │                                                              │
     │  emit ProofVerified(callId, imageId, journalDigest)          │
     │                                                              │
