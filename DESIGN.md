@@ -279,7 +279,7 @@ pipeline.ts
          zkProofSeal, journalDataAbi
        })
          │
-         └─ VeriCallRegistryV3.registerCallDecision(
+         └─ VeriCallRegistryV4.registerCallDecision(
               callId,        // keccak256(callSid + timestamp)
               decision,      // 1=ACCEPT, 2=BLOCK, 3=RECORD
               reason,        // AI's decision reason (≤200 chars)
@@ -292,12 +292,13 @@ pipeline.ts
 - Sends TX to Base Sepolia via `viem`
 - Wallet: Derived from `DEPLOYER_MNEMONIC`
 
-**File**: [contracts/VeriCallRegistryV3.sol](contracts/VeriCallRegistryV3.sol)
-- `registerCallDecision()`: 5 args (no `callerHash`, no `sourceUrl`) — registers record + verifies ZK proof on-chain
+**File**: [contracts/VeriCallRegistryV4.sol](contracts/VeriCallRegistryV4.sol)
+- `registerCallDecision()`: 5 args — registers record + verifies ZK proof on-chain
 - `sourceUrl` is derived from the journal data (proven by ZK proof), not passed as an external argument
 - Decision–Journal binding: reconstructs `extractedData` from decision+reason and verifies `keccak256` match
+- Source code attestation: `provenSourceCodeCommit` non-empty check (10th journal field)
 - `verifyJournal()`: Checks `keccak256(journalDataAbi) == journalHash`
-- `getRecord()` / `getProvenData()` / `getStats()` / `callIds[]`: Read functions
+- `getRecord()` / `getProvenData()` / `getStats()` / `callIds[]`: Read functions (10 fields)
 
 > **What this proves**: The smart contract calls `verifier.verify(seal, imageId, sha256(journalDataAbi))`, which verifies the ZK proof on-chain. V3 additionally validates that the `decision` and `reason` args match the `extractedData` proven inside the journal — preventing a submitter from supplying a valid proof but altering the decision label. If any check fails, the transaction reverts via custom errors and no record is stored. A `verified: true` record on-chain means both the ZK proof and the decision–journal binding were cryptographically validated by the blockchain itself — creating an immutable, tamper-proof audit trail that anyone can independently verify.
 
@@ -489,9 +490,10 @@ veriCall/
 │       ├── vlayer-api.ts               # vlayer REST API client
 │       ├── on-chain.ts                 # Base Sepolia TX submission
 │       ├── decision-store.ts           # Cloud SQL decision data store
-│       └── abi.ts                      # VeriCallRegistryV3 ABI
+│       └── abi.ts                      # VeriCallRegistryV4 ABI
 ├── contracts/
-│   ├── VeriCallRegistryV3.sol          # V3 Solidity contract (journal-bound, current)
+│   ├── VeriCallRegistryV4.sol          # V4 Solidity contract (source code attestation, current)
+│   ├── VeriCallRegistryV3.sol          # V3 Solidity contract (journal-bound, previous)
 │   ├── VeriCallRegistryV2.sol          # V2 Solidity contract (historical)
 │   ├── RiscZeroMockVerifier.sol        # Mock Verifier for development
 │   ├── interfaces/
@@ -542,7 +544,7 @@ veriCall/
 │  Twilio           │  │  vlayer          │  │  Base Sepolia │
 │  (PSTN Gateway)   │  │  (ZK SaaS)      │  │  (L2 Chain)   │
 │                    │  │                  │  │               │
-│  - Phone number   │  │  - Web Prover   │  │  - V3 Contract│
+│  - Phone number   │  │  - Web Prover   │  │  - V4 Contract│
 │  - Media Stream   │  │  - ZK Prover    │  │  - MockVerifier│
 │  - WebSocket      │  │  - TLSNotary    │  │               │
 └──────────────────┘  └──────────────────┘  └──────────────┘
@@ -660,7 +662,7 @@ git push origin master
 
 ### 3.7 Contract Design
 
-**VeriCallRegistryV3** (deployed on Base Sepolia: `0x4395cf02b8d343aae958bda7ac6ed71fbd4abd48`)
+**VeriCallRegistryV4** (deployed on Base Sepolia: `0x9a6015c6a0f13a816174995137e8a57a71250b81`)
 
 ```solidity
 struct CallRecord {
@@ -668,13 +670,15 @@ struct CallRecord {
     string reason;             // AI's decision reason (≤200 chars)
     bytes32 journalHash;       // keccak256(journalDataAbi) — commitment
     bytes zkProofSeal;         // RISC Zero seal (Mock: 36B / Prod: ~256B)
-    bytes journalDataAbi;      // ABI-encoded public outputs (all 9 fields)
+    bytes journalDataAbi;      // ABI-encoded public outputs (all 10 fields)
     string sourceUrl;          // URL from journal (not external arg)
     uint256 timestamp;         // block.timestamp
     address submitter;         // TX sender
     bool verified;             // ZK verification passed flag
 }
 ```
+
+> **V4 change from V3**: Adds `provenSourceCodeCommit` (10th journal field) — the git commit SHA of VeriCall's source code at the time the decision was made. The server embeds this at build time via `git rev-parse HEAD`, the Decision API returns it, TLSNotary attests it, and the contract enforces non-empty (`bytes(provenSourceCodeCommit).length > 0`). Anyone can verify the exact code version at `https://github.com/rtree/veriCall/tree/<commit>`.
 
 > **V3 change from V2**: `callerHash` (keccak256 of phone number) has been **removed** from `CallRecord` for privacy — no phone number hash is stored on-chain. `sourceUrl` is now derived from the journal data (proven by ZK proof) rather than supplied as an external argument.
 
@@ -684,18 +688,21 @@ struct CallRecord {
 - **Decision–Journal binding**: `keccak256(reconstructed)` must match `keccak256(extractedData)` from the journal — prevents submitters from altering decision/reason after proof generation
 - **Immutable checks**: `EXPECTED_NOTARY_KEY_FP`, `expectedQueriesHash` — validated against journal fields
 - **URL prefix validation**: byte-by-byte check that journal URL starts with `expectedUrlPrefix`
+- **Source code attestation**: `provenSourceCodeCommit` non-empty check — the git commit SHA links the on-chain record to a specific, auditable code version on GitHub
 - **Custom errors**: `AlreadyRegistered`, `InvalidDecision`, `DecisionMismatch`, `ZKProofVerificationFailed`, etc. (replaces require strings)
-- Decoding `journalDataAbi` yields all 9 fields: `notaryKeyFingerprint`, `method`, `url`, `timestamp`, `queriesHash`, `provenDecision`, `provenReason`, `provenSystemPromptHash`, `provenTranscriptHash`
+- Decoding `journalDataAbi` yields all 10 fields: `notaryKeyFingerprint`, `method`, `url`, `timestamp`, `queriesHash`, `provenDecision`, `provenReason`, `provenSystemPromptHash`, `provenTranscriptHash`, `provenSourceCodeCommit`
 - `sourceUrl` is derived from the journal's `url` field (proven by ZK proof, not supplied externally)
 - `verified == true` means the ZK proof passed on-chain verification
 
 **Phase Plan**:
 - Phase 1 (complete): On-chain storage of proof data (Proof of Existence) — VeriCallRegistry V1
 - Phase 2 (complete): MockVerifier + on-chain ZK verification — VeriCallRegistryV2 (`0x656ae703ca94cc4247493dec6f9af9c6f974ba82`)
-- **Phase 3 (current): Journal-bound decision integrity + immutable validation** — VeriCallRegistryV3 (`0x4395cf02b8d343aae958bda7ac6ed71fbd4abd48`)
+- Phase 3 (complete): Journal-bound decision integrity + immutable validation — VeriCallRegistryV3 (`0x4395cf02b8d343aae958bda7ac6ed71fbd4abd48`)
   - 9-field journal: `notaryKeyFingerprint`, `method`, `url`, `timestamp`, `queriesHash`, `provenDecision`, `provenReason`, `provenSystemPromptHash`, `provenTranscriptHash`
-- Phase 4 (future): vlayer production → switch to RiscZeroVerifierRouter
-- Phase 5 (future): Cross-chain verification on Sui
+- **Phase 4 (current): Source code attestation** — VeriCallRegistryV4 (`0x9a6015c6a0f13a816174995137e8a57a71250b81`)
+  - 10-field journal: adds `provenSourceCodeCommit` (git commit SHA proven via TLSNotary → GitHub)
+- Phase 5 (future): vlayer production → switch to RiscZeroVerifierRouter
+- Phase 6 (future): Cross-chain verification on Sui
 
 ### 3.8 Why REST API (Not Solidity Prover/Verifier)
 
@@ -712,7 +719,7 @@ vlayer offers two integration paths:
 
 1. **Server-driven pipeline**: VeriCall's proof flow runs server-side (Cloud Run → vlayer → Base Sepolia). Phone callers don't have wallets. The REST API maps naturally to this; a Solidity Prover/Verifier pair assumes the triggering entity is an EOA, which adds unnecessary indirection.
 
-2. **Custom verification logic**: `VeriCallRegistryV3.sol` writes directly against `IRiscZeroVerifier` to implement journal-bound decision integrity, notary fingerprint checks, URL prefix binding, queriesHash validation, and systemPromptHash/transcriptHash presence — none of which are available in vlayer's auto-generated Verifier contract. Using the SDK would require forking the generated contract anyway.
+2. **Custom verification logic**: `VeriCallRegistryV4.sol` writes directly against `IRiscZeroVerifier` to implement journal-bound decision integrity, notary fingerprint checks, URL prefix binding, queriesHash validation, systemPromptHash/transcriptHash presence, and sourceCodeCommit attestation — none of which are available in vlayer's auto-generated Verifier contract. Using the SDK would require forking the generated contract anyway.
 
 > **Future improvement**: If vlayer's Solidity SDK adds support for custom journal validation hooks in the generated Verifier, migrating is straightforward — the core proof data (WebProof → ZK Proof → journal) is identical regardless of the integration method.
 
@@ -731,36 +738,37 @@ The MockVerifier checks **only** that the seal starts with the magic bytes `0xFF
 
 #### What IS Verified On-Chain (Even with MockVerifier)
 
-The MockVerifier is only one of many verification layers. The following checks **do** run on-chain in `VeriCallRegistryV3.registerCallDecision()`:
+The MockVerifier is only one of many verification layers. The following checks **do** run on-chain in `VeriCallRegistryV4.registerCallDecision()`:
 
 | # | Check | What It Validates | Code |
 |---|-------|-------------------|------|
 | 1 | `verifier.verify()` call | The ZK seal is structurally valid (Mock: prefix check) | `try verifier.verify(...) {} catch { revert }` |
 | 2 | `sha256(journalDataAbi)` | Journal digest computed deterministically | `bytes32 journalDigest = sha256(journalDataAbi)` |
-| 3 | **Journal ABI decode** | Journal contains 9 well-formed fields | `abi.decode(journalDataAbi, (bytes32, string, string, uint256, bytes32, string, string, string, string))` |
+| 3 | **Journal ABI decode** | Journal contains 10 well-formed fields | `abi.decode(journalDataAbi, (bytes32, string, string, uint256, bytes32, string, string, string, string, string))` |
 | 4 | **Notary FP check** | TLSNotary key fingerprint matches known constant | `notaryKeyFingerprint != EXPECTED_NOTARY_KEY_FP → revert` |
 | 5 | **HTTP method check** | Proven request was `GET` | `keccak256(method) != keccak256("GET") → revert` |
 | 6 | **QueriesHash check** | JMESPath extraction config matches expected | `queriesHash != expectedQueriesHash → revert` |
 | 7 | **URL prefix validation** | Proven URL points to VeriCall Decision API | `_validateUrlPrefix(url)` — byte-by-byte |
 | 8 | **systemPromptHash non-empty** | AI ruleset hash is present | `require(bytes(provenSystemPromptHash).length > 0)` |
 | 9 | **transcriptHash non-empty** | Conversation hash is present | `require(bytes(provenTranscriptHash).length > 0)` |
-| 10 | **Decision binding** | Submitted decision matches proven decision | `keccak256(decisionStr) != keccak256(provenDecision) → revert` |
-| 11 | **Reason binding** | Submitted reason matches proven reason | `keccak256(reason) != keccak256(provenReason) → revert` |
-| 12 | **Duplicate prevention** | No re-registration of same callId | `records[callId].timestamp != 0 → revert` |
-| 13 | **Decision validity** | Decision enum is not UNKNOWN | `decision == UNKNOWN → revert` |
-| 14 | **Journal hash commitment** | `keccak256(journalDataAbi)` stored as `journalHash` | Enables offline re-verification |
+| 10 | **sourceCodeCommit non-empty** | Git commit SHA is present (V4 new) | `require(bytes(provenSourceCodeCommit).length > 0)` |
+| 11 | **Decision binding** | Submitted decision matches proven decision | `keccak256(decisionStr) != keccak256(provenDecision) → revert` |
+| 12 | **Reason binding** | Submitted reason matches proven reason | `keccak256(reason) != keccak256(provenReason) → revert` |
+| 13 | **Duplicate prevention** | No re-registration of same callId | `records[callId].timestamp != 0 → revert` |
+| 14 | **Decision validity** | Decision enum is not UNKNOWN | `decision == UNKNOWN → revert` |
+| 15 | **Journal hash commitment** | `keccak256(journalDataAbi)` stored as `journalHash` | Enables offline re-verification |
 
-**Result**: Every registration passes through journal decode, TLS metadata validation, decision–journal binding, and duplicate prevention — all on-chain. Even with the MockVerifier, a fake or malformed journal will be rejected by checks 3–11. The only thing the MockVerifier "trusts" is the seal format (check 1) — all other checks are real.
+**Result**: Every registration passes through journal decode, TLS metadata validation, decision–journal binding, source code attestation, and duplicate prevention — all on-chain. Even with the MockVerifier, a fake or malformed journal will be rejected by checks 3–12. The only thing the MockVerifier "trusts" is the seal format (check 1) — all other checks are real.
 
 #### Production Migration Path
 
 ```
-Dev (current):   VeriCallRegistryV3(RiscZeroMockVerifier(0xFFFFFFFF), ...)
-Production:      VeriCallRegistryV3(RiscZeroVerifierRouter(0x0b144e...), ...)
+Dev (current):   VeriCallRegistryV4(RiscZeroMockVerifier(0xFFFFFFFF), ...)
+Production:      VeriCallRegistryV4(RiscZeroVerifierRouter(0x0b144e...), ...)
 ```
 
 - **No contract code change required** — the `verifier` is injected via constructor
-- When vlayer starts returning production Groth16 proofs (~256 bytes instead of 36 bytes), a new V3 instance is deployed pointing to the RISC Zero `RiscZeroVerifierRouter`
+- When vlayer starts returning production Groth16 proofs (~256 bytes instead of 36 bytes), a new V4 instance is deployed pointing to the RISC Zero `RiscZeroVerifierRouter`
 - All verification checks continue to work identically — only check #1 (seal verification) becomes cryptographically binding
 - Past MockVerifier records remain on the old contract; new production records go to the new contract
 
@@ -786,7 +794,7 @@ VeriCall's contract is **already designed for this upgrade** — the `verifier` 
 | Guarantee | Mechanism |
 |-----------|-----------|
 | **VeriCall's server returned this specific JSON** | TLSNotary MPC attestation — a third-party Notary joins the TLS session and attests the HTTPS response without seeing plaintext |
-| **The on-chain record matches the attested response** | Decision–Journal Binding — `keccak256` match between submitted decision/reason and proven journal fields (checks 10–11 in §3.9) |
+| **The on-chain record matches the attested response** | Decision–Journal Binding — `keccak256` match between submitted decision/reason and proven journal fields (checks 11–12 in §3.9) |
 | **The proof targets VeriCall's API** | URL prefix validation, HTTP method check, Notary fingerprint check (checks 4–7 in §3.9) |
 | **Record is immutable** | On-chain storage — once registered, no function can modify a `CallRecord` |
 
@@ -810,15 +818,68 @@ VeriCall's contract is **already designed for this upgrade** — the `verifier` 
 
 This is **public accountability through immutable commitment** — strictly better than the status quo, even though it falls short of full AI inference verification.
 
+#### 🔗 GitHub Code Attestation: Source Code Accountability
+
+> **GitHub Code Attestation** is VeriCall's approach to linking on-chain records to auditable source code. The git commit SHA of the running server is embedded in every decision, attested by TLSNotary, and stored on-chain — creating a verifiable chain from decision to code.
+
+**How it works (implemented in V4):**
+
+```
+Build time:   git rev-parse HEAD → SOURCE_CODE_COMMIT env var
+     ↓
+Decision API: { ..., "sourceCodeCommit": "fb6d3e0...", ... }
+     ↓
+TLSNotary:    Attests entire JSON response (including commit SHA)
+     ↓
+ZK Prover:    JMESPath extracts sourceCodeCommit into journal
+     ↓
+On-chain:     provenSourceCodeCommit stored, non-empty enforced
+     ↓
+Anyone:       github.com/rtree/veriCall/tree/fb6d3e0 → read the code
+```
+
+**Three levels of source code attestation:**
+
+| Level | What It Proves | Status |
+|-------|----------------|--------|
+| **A. Commit Embedding** | Server *claims* to be running commit X; TLSNotary seals that claim; contract stores it on-chain | **✅ Implemented (V4)** |
+| **B. Commit Existence** | Commit X *actually exists* on GitHub — independently proven via TLSNotary → `api.github.com` | **✅ PoC confirmed** (Web Proof in 61s), deferred |
+| **C. Code Content** | Source code *content* at commit X has hash Y — proven via TLSNotary → `raw.githubusercontent.com` | **⚠️ Partially confirmed** (Web Proof OK, ZK fails — raw text isn't JSON, JMESPath requires JSON) |
+
+**Why Level A is already valuable:**
+
+- The commit SHA is sealed inside the TLSNotary attestation — the server cannot change it after the fact
+- If the server lies (returns a nonexistent commit), anyone checking `github.com/rtree/veriCall/tree/<commit>` will get a 404 — **lies are publicly detectable**
+- If the server returns a *real* commit but isn't actually running that code, the published source at that commit won't match the observed behavior — also detectable
+- Every commit change is visible on-chain — a historical record of which code version made which decision
+
+**Why Level B is deferred (not impossible):**
+
+- Requires a second Web Proof per call (`api.github.com/repos/rtree/veriCall/commits/<sha>` returns JSON → JMESPath extracts `sha` → ZK compression works)
+- Adds ~60s latency per call (second TLSNotary + ZK round-trip)
+- Marginal value: commit existence can be verified manually in seconds
+- GitHub API rate limit: 60 req/hour unauthenticated (from vlayer's Notary IP) — not a hard blocker but adds fragility
+- **Decision**: accountability chain from Level A is sufficient for the current trust model. Level B is a future optimization.
+
+**Why Level C is blocked:**
+
+- `raw.githubusercontent.com` returns plain text (not JSON)
+- vlayer's ZK Prover uses JMESPath for field extraction, which requires JSON input
+- Web Proof generation *succeeds* (TLSNotary attests the raw file), but ZK compression *fails*
+- **Workaround**: if vlayer adds non-JSON extraction or if GitHub provides a JSON endpoint for file content with hash, Level C becomes possible
+
 #### Trust Levels: Roadmap to AI Attribution
 
 ```
-Level 0: "Trust us"                              ← Status quo (all AI screening today)
-Level 1: Server commitment attested by TLSNotary  ← VeriCall today ✅
-Level 2: AI provider response attested by TLSNotary ← vlayer POST support (near-term)
-Level 3: AI inference proven in TEE                ← TEE integration (medium-term)
-Level 4: AI inference proven in ZK                 ← Verifiable inference (long-term, LLM-scale years away)
+Level 0:   "Trust us"                                    ← Status quo (all AI screening today)
+Level 1:   Server commitment attested by TLSNotary        ← VeriCall V3 ✅
+Level 1.5: + Source code attested via GitHub + TLSNotary   ← VeriCall V4 ✅ (current)
+Level 2:   AI provider response attested by TLSNotary     ← vlayer POST support (near-term)
+Level 3:   AI inference proven in TEE                      ← TEE integration (medium-term)
+Level 4:   AI inference proven in ZK                       ← Verifiable inference (long-term)
 ```
+
+**Level 1.5 — Source Code Attestation** (implemented in V4): VeriCall's source code is public on GitHub. At build time, the server captures its git commit SHA (`git rev-parse HEAD`). The Decision API embeds this commit in its JSON response. TLSNotary attests the response (including the commit). The contract stores it on-chain. Anyone can verify the exact code version at `https://github.com/rtree/veriCall/tree/<commit>`. This narrows the trust gap: you know not just *what* the server returned, but *which code* was running when it made the decision. It doesn't prove the deployed binary matches the source (that would require reproducible builds or TEE), but it creates a strong accountability chain.
 
 **Level 2 — AI Provider Attestation**: If vlayer's Web Prover adds POST support with custom headers, VeriCall could call the Vertex AI API *through* TLSNotary — proving that Google's model returned this decision for this input. The trust assumption narrows from "VeriCall's server" to "Google's infrastructure." Technical requirements:
 - vlayer Web Prover: POST method + Authorization header support
@@ -833,7 +894,7 @@ Level 4: AI inference proven in ZK                 ← Verifiable inference (lon
 #### Development vs Production Verification
 
 See §3.9 for full details. Summary:
-- **Current (dev)**: `MockVerifier` — ZK seal is not cryptographically verified (SELECTOR_FAKE prefix check only). All other 13 on-chain checks are real.
+- **Current (dev)**: `MockVerifier` — ZK seal is not cryptographically verified (SELECTOR_FAKE prefix check only). All other 14 on-chain checks are real.
 - **Production (pending vlayer)**: `RiscZeroVerifierRouter` — full Groth16 BN254 pairing check. Zero VeriCall code changes needed.
 
 ---
@@ -1027,7 +1088,7 @@ RISC Zero uses SHA-256 internally, so the Solidity side must also use `sha256()`
 │  │                          │    │  c34b32bfa86fb711             │  │
 │  └──────────────────────────┘    └──────────────────────────────┘  │
 │                                                                     │
-│  Injected via VeriCallRegistryV3 constructor:                       │
+│  Injected via VeriCallRegistryV4 constructor:                       │
 │  constructor(                                                       │
 │    IRiscZeroVerifier _verifier,                                     │
 │    bytes32 _imageId,                                                │
@@ -1086,13 +1147,14 @@ VeriCallRegistryV3
 │   │       └── Prod: Groth16 BN254 pairing check → pass or revert
 │   │
 │   ├── Step 2: Journal Decode & Validation
-│   │   └── abi.decode(journalDataAbi) → 9 fields:
+│   │   └── abi.decode(journalDataAbi) → 10 fields:
 │   │       ├── notaryKeyFingerprint == EXPECTED_NOTARY_KEY_FP  ← immutable check
 │   │       ├── keccak256(method) == keccak256("GET")           ← HTTP method
 │   │       ├── queriesHash == expectedQueriesHash               ← owner-updatable check
 │   │       ├── _validateUrlPrefix(url)                          ← byte-by-byte prefix
 │   │       ├── provenSystemPromptHash.length > 0                 ← non-empty
-│   │       └── provenTranscriptHash.length > 0                   ← non-empty
+│   │       ├── provenTranscriptHash.length > 0                   ← non-empty
+│   │       └── provenSourceCodeCommit.length > 0                 ← non-empty (V4)
 │   │
 │   ├── Step 3: Decision–Journal Binding
 │   │   └── Compare submitted decision/reason against provenDecision/provenReason
@@ -1118,7 +1180,7 @@ VeriCallRegistryV3
     └── transferOwnership(address) [onlyOwner]
 ```
 
-#### CallRecord Struct (V3)
+#### CallRecord Struct (V4)
 
 ```solidity
 struct CallRecord {
@@ -1126,7 +1188,7 @@ struct CallRecord {
     string reason;             // AI's decision reason (≤200 chars)
     bytes32 journalHash;       // keccak256(journalDataAbi) — commitment
     bytes zkProofSeal;         // RISC Zero seal (Mock: 36B / Prod: ~256B)
-    bytes journalDataAbi;      // ABI-encoded public outputs (all 9 fields)
+    bytes journalDataAbi;      // ABI-encoded public outputs (all 10 fields)
     string sourceUrl;          // URL from journal (not external arg)
     uint256 timestamp;         // block.timestamp
     address submitter;         // TX sender

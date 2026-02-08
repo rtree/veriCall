@@ -58,6 +58,7 @@ This pattern — **committing an AI decision, its inputs, and its rules to an im
 | **Decision is server-attested** | TLSNotary Web Proof — a third-party Notary attests VeriCall's server genuinely returned this decision (server-level attestation, not AI-level). |
 | **Output wasn't tampered** | Decision–Journal Binding — on-chain `keccak256` comparison ensures submitted decision/reason match the proven values. |
 | **When it happened** | TLS session timestamp — from the TLS connection itself, not self-reported. |
+| **Source code version** | `provenSourceCodeCommit` — git commit SHA of VeriCall's source code at decision time. TLSNotary-attested (not self-reported). Anyone can inspect the exact code at `github.com/rtree/veriCall/tree/<commit>`. See [GitHub Code Attestation](#-github-code-attestation). |
 | **Privacy** | Phone numbers never go on-chain. Transcript is hashed. AI reasoning is stored in plaintext — intentional, because accountability requires the reasoning to be publicly auditable. |
 
 ## Trust Model
@@ -79,6 +80,30 @@ Today, AI call screening is a black box — the company controls the AI, the rul
 VeriCall creates **public accountability**. The server is cryptographically locked into a specific (decision, reason, ruleset hash, transcript hash) tuple at a specific time. If the published system prompt doesn't match the on-chain hash, that discrepancy is publicly detectable. VeriCall can't secretly change its screening rules per caller, and can't deny or alter a decision after the fact.
 
 This is strictly better than the status quo ("trust us") — though it falls short of full AI inference verification, which remains an open research problem across the industry.
+
+### 🔗 GitHub Code Attestation
+
+**V4 introduces *GitHub Code Attestation* — the on-chain record includes the git commit SHA of VeriCall's source code, proven through TLSNotary.**
+
+How it works:
+1. At **build time**, the server captures its git commit (`git rev-parse HEAD`)
+2. The **Decision API** embeds this commit in every JSON response
+3. **TLSNotary** attests the entire response — including the commit SHA
+4. The **contract** stores `provenSourceCodeCommit` on-chain and enforces non-empty
+5. **Anyone** can inspect the exact code version at `github.com/rtree/veriCall/tree/<commit>`
+
+This means you know not just *what* the server returned, but *which code* was running when it made the decision. If VeriCall changes its logic, the commit changes — and that change is visible on-chain forever.
+
+**What it proves and what it doesn't:**
+
+| | |
+|---|---|
+| ✅ The server *claimed* to be running commit X, and TLSNotary sealed that claim | Tamper-proof commitment |
+| ✅ Anyone can read commit X on GitHub and audit the full source | Open-source accountability |
+| ✅ If the server lies about its commit, the code at that SHA won't match the behavior | Lies are publicly detectable |
+| ⚠️ Does not independently prove the *deployed binary* matches commit X | Would require reproducible builds or TEE |
+
+> **Future enhancement**: vlayer's Web Prover can also attest GitHub's API directly (`api.github.com/repos/rtree/veriCall/commits/<sha>`) — independently proving the commit *exists* on GitHub. We confirmed this works in a PoC (Web Proof generated in 61s). This is deferred because the current approach already creates a strong accountability chain, and adding a second Web Proof per call would double pipeline latency. → [Details](DESIGN.md#-github-code-attestation-source-code-accountability)
 
 **Narrowing the trust gap (future):** If vlayer's Web Prover adds POST support with custom headers, VeriCall could directly attest the Vertex AI API response — proving that *Google's AI model* (not just VeriCall's server) returned this specific decision for this specific input. This would shift trust from "VeriCall's server" to "Google's infrastructure" — a much smaller trust assumption. Beyond that, running the server inside a TEE (Trusted Execution Environment) could prove that specific code processed specific inputs, approaching full AI inference verification.
 
@@ -112,7 +137,7 @@ This is strictly better than the status quo ("trust us") — though it falls sho
                                                │
                                                ▼
                                       Base Sepolia
-                                   VeriCallRegistryV3
+                                   VeriCallRegistryV4
 ```
 
 ## How It Works
@@ -127,19 +152,19 @@ vlayer's Web Prover fetches the Decision API response using TLSNotary — a thir
 
 ### Step 3: ZK Proof (RISC Zero)
 
-vlayer's ZK Prover compresses the Web Proof into a succinct RISC Zero proof. JMESPath extraction pulls 4 fields — `decision`, `reason`, `systemPromptHash`, `transcriptHash` — into a 9-field ABI-encoded journal.
+vlayer's ZK Prover compresses the Web Proof into a succinct RISC Zero proof. JMESPath extraction pulls 5 fields — `decision`, `reason`, `systemPromptHash`, `transcriptHash`, `sourceCodeCommit` — into a 10-field ABI-encoded journal.
 
 ### Step 4: On-Chain Verification
 
-The proof and journal are submitted to `VeriCallRegistryV3` on Base Sepolia. The contract validates every field before storing. Details below.
+The proof and journal are submitted to `VeriCallRegistryV4` on Base Sepolia. The contract validates every field before storing. Details below.
 
 ## On-Chain Verification
 
 This is VeriCall's core technical contribution. The contract doesn't just store data — it validates every field before accepting a record.
 
-### 9-Field Journal
+### 10-Field Journal
 
-The ZK proof produces an ABI-encoded journal. All 9 fields are decoded and validated on-chain:
+The ZK proof produces an ABI-encoded journal. All 10 fields are decoded and validated on-chain:
 
 | Field | What It Proves | How It's Verified |
 |-------|----------------|-------------------|
@@ -152,6 +177,7 @@ The ZK proof produces an ABI-encoded journal. All 9 fields are decoded and valid
 | `provenReason` | AI reasoning — from the API response | Contract binds to submitted `reason` via `keccak256` match (Steps I–J) |
 | `provenSystemPromptHash` | SHA-256 of AI ruleset — from the response | Contract requires non-empty; anyone can hash published rules and compare |
 | `provenTranscriptHash` | SHA-256 of conversation — from the API response | Contract requires non-empty; commits to which conversation was evaluated |
+| `provenSourceCodeCommit` | Git commit SHA — from the API response | Contract requires non-empty; links to auditable code on GitHub |
 
 ### What the Contract Checks
 
@@ -159,17 +185,18 @@ The ZK proof produces an ABI-encoded journal. All 9 fields are decoded and valid
 registerCallDecision(callId, decision, reason, seal, journal)
 │
 ├─ A. ZK proof — verifier.verify(seal, imageId, sha256(journal))
-├─ B. Decode journal → 9 fields
+├─ B. Decode journal → 10 fields
 ├─ C. Notary fingerprint == expected constant
 ├─ D. HTTP method == "GET"
 ├─ E. queriesHash == expected hash
 ├─ F. URL starts with expected prefix (byte-by-byte)
 ├─ G. systemPromptHash is non-empty
 ├─ H. transcriptHash is non-empty
-├─ I. decision matches provenDecision (keccak256)
-├─ J. reason matches provenReason (keccak256)
-├─ K. callId not already registered (duplicate prevention)
-└─ L. Store record + emit CallDecisionRecorded event
+├─ I. sourceCodeCommit is non-empty ← NEW in V4
+├─ J. decision matches provenDecision (keccak256)
+├─ K. reason matches provenReason (keccak256)
+├─ L. callId not already registered (duplicate prevention)
+└─ M. Store record + emit CallDecisionRecorded event
 ```
 
 ### Decision–Journal Binding (Steps I–J)
@@ -181,13 +208,13 @@ The decision and reason are stored as typed fields (for queryability) but also e
 The `verifier` is an `IRiscZeroVerifier` interface injected via constructor:
 
 ```
-Current:    VeriCallRegistryV3( MockVerifier,   imageId, ... )
-Production: VeriCallRegistryV3( VerifierRouter, imageId, ... )
+Current:    VeriCallRegistryV4( MockVerifier,   imageId, ... )
+Production: VeriCallRegistryV4( VerifierRouter, imageId, ... )
 ```
 
 Zero code changes needed. [RISC Zero's verifier infrastructure is production-ready](https://github.com/boundless-xyz/boundless-foundry-template). The remaining bottleneck is vlayer's ZK Prover transitioning from dev-mode seals to real Groth16 proofs. → [Details](DESIGN.md#39-verifier-honesty-mockverifier-vs-production)
 
-Anyone can call `getProvenData(callId)` to decode all 9 journal fields directly from the contract. No API keys required.
+Anyone can call `getProvenData(callId)` to decode all 10 journal fields directly from the contract. No API keys required.
 
 ## Try It Yourself
 
@@ -218,7 +245,7 @@ npx tsx scripts/verify.ts --deep   # also re-fetch Decision API for live check
 | **Server** | Next.js 16 + custom WebSocket server on Cloud Run |
 | **Web Proofs** | vlayer Web Prover (TLSNotary / MPC) |
 | **ZK Proofs** | vlayer ZK Prover (RISC Zero) |
-| **Chain** | Base Sepolia · viem · VeriCallRegistryV3 (Solidity / Foundry) |
+| **Chain** | Base Sepolia · viem · VeriCallRegistryV4 (Solidity / Foundry) |
 | **Email** | SendGrid |
 
 ## Getting Started
@@ -233,7 +260,7 @@ pnpm dev                      # dev server with WebSocket
 
 ## Status & Roadmap
 
-**Working today**: Real-time AI call screening → TLSNotary Web Proof → RISC Zero ZK Proof → on-chain journal validation (9-field decode, decision–journal binding) → independent verification via [browser](https://vericall-kkz6k4jema-uc.a.run.app/verify) and [CLI](scripts/verify.ts). Deployed on Cloud Run + Base Sepolia.
+**Working today**: Real-time AI call screening → TLSNotary Web Proof → RISC Zero ZK Proof → on-chain journal validation (10-field decode, decision–journal binding, GitHub Code Attestation) → independent verification via [browser](https://vericall-kkz6k4jema-uc.a.run.app/verify) and [CLI](scripts/verify.ts). Deployed on Cloud Run + Base Sepolia.
 
 **Waiting on upstream**: Production Groth16 verification (vlayer ZK Prover) · Solidity SDK migration (vlayer custom hooks). No VeriCall code changes needed for either. → [Details](DESIGN.md#39-verifier-honesty-mockverifier-vs-production)
 

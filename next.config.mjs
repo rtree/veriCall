@@ -1,3 +1,9 @@
+import { execSync } from 'child_process';
+
+// Inject git commit SHA at build time for source code attestation
+const SOURCE_CODE_COMMIT = process.env.SOURCE_CODE_COMMIT
+  || (() => { try { return execSync('git rev-parse HEAD').toString().trim(); } catch { return 'unknown'; } })();
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Disable React Server Components to avoid React2Shell vulnerability attack surface
@@ -9,6 +15,11 @@ const nextConfig = {
   
   // Disable x-powered-by header for security
   poweredByHeader: false,
+  
+  // Expose build-time env vars
+  env: {
+    SOURCE_CODE_COMMIT,
+  },
   
   // Configure headers for security
   async headers() {
