@@ -725,7 +725,7 @@ vlayer offers two integration paths:
 
 ### 3.9 Verifier Honesty: MockVerifier vs Production
 
-> **Transparency note**: VeriCall currently uses a `RiscZeroMockVerifier` for ZK proof verification. This section explains exactly what that means, what it doesn't mean, and why this is the standard approach for RISC Zero-based dApps during development.
+> **⚠️ Hackathon Deployment**: VeriCall currently uses a `RiscZeroMockVerifier` for ZK proof verification. This section explains exactly what that means, what it doesn't mean, and why this is the standard approach for RISC Zero-based dApps before production prover availability.
 
 #### What the MockVerifier Does
 

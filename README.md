@@ -12,6 +12,9 @@
 
 **A "Mathematical Gatekeeper" — Protecting Your Family from AI Scams with Verifiable Trust**
 
+> **We don't prove the AI is correct. We prove the operator can't secretly change the story afterward.**
+> *— AI decision non-repudiation + public accountability, anchored on-chain.*
+
 <img width="1000" alt="VeriCall Live Demo — full pipeline from phone call to on-chain record" src="docs/screenshots/demo-pipeline-complete.png" />
 
 ## 🌍 The Crisis
@@ -43,9 +46,9 @@ The AI follows **fixed screening rules**. It never skips verification even if th
 - **SPAM** → The AI blocks the call immediately and sends a **Spam Alert** to you.
 - **IMPORTANT** → The AI connects the call to you or sends an email notification right away.
 
-### 4. 🔐 Proof of Honesty (ZK Proof)
+### 4. 🔐 Proof on Chain (ZK Proof)
 
-The AI's decision is anchored **on-chain** using [vlayer](https://vlayer.xyz) Web Proofs and ZK Proofs. By using Zero-Knowledge Proofs, VeriCall proves that **the AI followed the rules correctly** — while keeping your privacy. Every decision, every reasoning, every ruleset hash is committed to an immutable record on Base Sepolia.
+The AI's decision is anchored **on-chain** using [vlayer](https://vlayer.xyz) Web Proofs and ZK Proofs. VeriCall doesn't claim to prove the AI is fair — instead, it creates **non-repudiation**: the operator cannot rewrite, deny, or secretly alter a decision after the fact. Every decision, every reasoning, every ruleset hash is committed to an immutable record on Base Sepolia — with **Decision–Journal Binding** that makes proof-and-decision inseparable.
 
 > 🔍 **You don't need to take VeriCall's word for it.** Every on-chain record — decision, reasoning, ruleset hash, transcript hash, source code commit — is publicly readable. Verify [from your browser](https://vericall-kkz6k4jema-uc.a.run.app/verify) or [from the CLI](scripts/verify.ts). No API keys, no VeriCall servers required.
 
@@ -104,33 +107,40 @@ Today, AI call screening is a black box — the company controls the AI, the rul
 
 VeriCall creates **public accountability**. The server is cryptographically locked into `(decision, reason, systemPromptHash, transcriptHash, sourceCodeCommit)` at a specific time. The source code at that commit is public — anyone can read the screening rules, hash them, and verify against on-chain values. VeriCall can't secretly change its screening rules per caller, and can't deny or alter a decision after the fact. This is **immutable commitment + auditable source code** — significantly stronger than simple server attestation.
 
+```
+  Trust Evolution:
+
+  Today (no VeriCall)         VeriCall (now)                   Future
+  ┌──────────────────┐        ┌──────────────────────────┐     ┌──────────────────────────┐
+  │ Trust the         │        │ Trust server attestation  │     │ Trust Google API          │
+  │ operator entirely │ ──→    │ + chain immutability      │ ──→ │ attestation + TEE         │
+  │                   │        │ + auditable source code   │     │ (full inference proof)    │
+  │ "Just trust us"   │        │ "Operator can't rewrite   │     │ "Even the server can't    │
+  │                   │        │  history"                 │     │  lie about AI output"     │
+  └──────────────────┘        └──────────────────────────┘     └──────────────────────────┘
+```
+
 ### 🔗 GitHub Code Attestation
 
-**V4 introduces *GitHub Code Attestation* — the on-chain record includes the git commit SHA of VeriCall's source code, proven through TLSNotary.**
+**V4 anchors the git commit SHA on-chain — not via a separate GitHub API call, but embedded inside the same Decision API response that TLSNotary already attests. Zero additional API calls, zero rate limit concerns.**
 
 How it works:
 1. At **build time**, the server captures its git commit (`git rev-parse HEAD`)
-2. The **Decision API** embeds this commit in every JSON response
-3. **TLSNotary** attests the entire response — including the commit SHA
+2. The **Decision API** embeds this commit in every JSON response alongside the decision
+3. **TLSNotary** attests the entire response in a single proof — decision, hashes, AND commit SHA
 4. The **contract** stores `provenSourceCodeCommit` on-chain and enforces non-empty
-5. **Anyone** can inspect the exact code version at `github.com/rtree/veriCall/tree/<commit>`
-
-This means you know not just *what* the server returned, but *which code* was running when it made the decision. If VeriCall changes its logic, the commit changes — and that change is visible on-chain forever.
-
-**What it proves and what it doesn't:**
+5. **Anyone** can inspect the exact code at `github.com/rtree/veriCall/tree/<commit>`
 
 | | |
 |---|---|
-| ✅ The server *claimed* to be running commit X, and TLSNotary sealed that claim | Tamper-proof commitment |
+| ✅ Commit SHA is sealed inside the same TLSNotary proof as the decision | No extra API calls |
 | ✅ Anyone can read commit X on GitHub and audit the full source | Open-source accountability |
-| ✅ If the server lies about its commit, the code at that SHA won't match the behavior | Lies are publicly detectable |
-| ⚠️ Does not independently prove the *deployed binary* matches commit X | Would require reproducible builds or TEE |
+| ✅ If the server lies about its commit, the code won't match the behavior | Lies are publicly detectable |
+| ⚠️ Does not prove the *deployed binary* matches commit X | Future: reproducible builds or TEE |
 
-> **Future enhancement**: vlayer's Web Prover can also attest GitHub's API directly (`api.github.com/repos/rtree/veriCall/commits/<sha>`) — independently proving the commit *exists* on GitHub. We confirmed this works in a PoC (Web Proof generated in 61s). This is deferred because the current approach already creates a strong accountability chain, and adding a second Web Proof per call would double pipeline latency. → [Details](DESIGN.md#-github-code-attestation-source-code-accountability)
+**Narrowing the trust gap (future):** Attesting the Vertex AI API response directly (proving *Google's model* returned this decision) or running the server inside a TEE. Both would shift trust from "VeriCall's server" to independently verifiable infrastructure.
 
-**Narrowing the trust gap (future):** If vlayer's Web Prover adds POST support with custom headers, VeriCall could directly attest the Vertex AI API response — proving that *Google's AI model* (not just VeriCall's server) returned this specific decision for this specific input. This would shift trust from "VeriCall's server" to "Google's infrastructure" — a much smaller trust assumption. Beyond that, running the server inside a TEE (Trusted Execution Environment) could prove that specific code processed specific inputs, approaching full AI inference verification.
-
-**Development status:** The ZK seal verifier currently uses `MockVerifier` (development mode — vlayer's ZK Prover has not yet shipped production Groth16 proofs). All other on-chain checks (journal decode, notary validation, URL binding, decision matching, hash presence) are real and enforced. The contract architecture supports production Groth16 with zero code changes → [Details](DESIGN.md#39-verifier-honesty-mockverifier-vs-production).
+> ⚠️ **Hackathon Deployment**: The ZK seal verifier uses `MockVerifier` — vlayer's ZK Prover has not yet shipped production Groth16 proofs. **All other 14 on-chain checks are real and enforced**: journal decode, notary validation, URL binding, decision–journal `keccak256` matching, hash presence, source code commit. The contract is production-ready — swap `MockVerifier` → `RiscZeroVerifierRouter` with zero code changes. → [Details](DESIGN.md#39-verifier-honesty-mockverifier-vs-production)
 
 ## Architecture
 
@@ -183,7 +193,9 @@ The proof and journal are submitted to `VeriCallRegistryV4` on Base Sepolia. The
 
 ## On-Chain Verification
 
-This is VeriCall's core technical contribution. The contract doesn't just store data — it validates every field before accepting a record.
+> 💡 **Core Technical Contribution: Decision–Journal Binding.** Most Web Proof projects store attested data. VeriCall goes further — the contract *forces* the submitted decision to match the proven decision via `keccak256`. You can't submit a valid ZK proof with decision "RECORD" and store "BLOCK". The proof and the record are cryptographically inseparable.
+
+The contract doesn't just store data — it validates every field before accepting a record.
 
 ### 10-Field Journal
 
