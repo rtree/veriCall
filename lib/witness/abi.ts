@@ -3,6 +3,7 @@
  * V1: 0xe454ca755219310b2728d39db8039cbaa7abc3b8 (Base Sepolia) — Phase 1
  * V2: 0x656ae703ca94cc4247493dec6f9af9c6f974ba82 (Base Sepolia) — Phase 2 (MockVerifier + verify)
  * V3: 0x4395cf02b8d343aae958bda7ac6ed71fbd4abd48 (Base Sepolia) — Phase 3 (journal-bound decision integrity, 9-field journal)
+ * V4: TBD (Base Sepolia) — Phase 4 (source code attestation, 10-field journal)
  */
 
 // ─── V3 ABI (Active) ──────────────────────────────────────────
@@ -69,6 +70,7 @@ export const VERICALL_REGISTRY_ABI = [
       { name: 'provenReason', type: 'string' },
       { name: 'provenSystemPromptHash', type: 'string' },
       { name: 'provenTranscriptHash', type: 'string' },
+      { name: 'provenSourceCodeCommit', type: 'string' },
     ],
     stateMutability: 'view',
   },

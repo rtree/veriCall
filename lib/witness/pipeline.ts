@@ -100,7 +100,7 @@ function getProofSourceUrl(callSid: string): string {
 }
 
 const PROOF_JMESPATH = (
-  process.env.VLAYER_PROOF_JMESPATH || 'decision,reason,systemPromptHash,transcriptHash'
+  process.env.VLAYER_PROOF_JMESPATH || 'decision,reason,systemPromptHash,transcriptHash,sourceCodeCommit'
 ).split(',');
 
 const DECISION_MAP: Record<string, number> = {

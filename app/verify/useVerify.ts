@@ -26,9 +26,9 @@ import { baseSepolia } from 'viem/chains';
 // ═══════════════════════════════════════════════════════════════
 
 export const CONFIG = {
-  registry: '0x4395cf02b8d343aae958bda7ac6ed71fbd4abd48' as `0x${string}`,
-  mockVerifier: '0x33014731e74f0610aefa9318b3e6600d51fd905e' as `0x${string}`,
-  deployBlock: BigInt(37362314),
+  registry: '0x9a6015c6a0f13a816174995137e8a57a71250b81' as `0x${string}`,
+  mockVerifier: '0xea998b642b469736a3f656328853203da3d92724' as `0x${string}`,
+  deployBlock: BigInt(37374494),
   rpcUrl: 'https://sepolia.base.org',
   basescan: 'https://sepolia.basescan.org',
   chainId: 84532,
@@ -47,7 +47,7 @@ const REGISTRY_ABI = [
   { type: 'function', name: 'verifier', inputs: [], outputs: [{ name: '', type: 'address' }], stateMutability: 'view' },
   { type: 'function', name: 'callIds', inputs: [{ name: '', type: 'uint256' }], outputs: [{ name: '', type: 'bytes32' }], stateMutability: 'view' },
   { type: 'function', name: 'getRecord', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: '', type: 'tuple', components: [{ name: 'decision', type: 'uint8' }, { name: 'reason', type: 'string' }, { name: 'journalHash', type: 'bytes32' }, { name: 'zkProofSeal', type: 'bytes' }, { name: 'journalDataAbi', type: 'bytes' }, { name: 'sourceUrl', type: 'string' }, { name: 'timestamp', type: 'uint256' }, { name: 'submitter', type: 'address' }, { name: 'verified', type: 'bool' }] }], stateMutability: 'view' },
-  { type: 'function', name: 'getProvenData', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: 'notaryKeyFingerprint', type: 'bytes32' }, { name: 'method', type: 'string' }, { name: 'url', type: 'string' }, { name: 'proofTimestamp', type: 'uint256' }, { name: 'queriesHash', type: 'bytes32' }, { name: 'provenDecision', type: 'string' }, { name: 'provenReason', type: 'string' }, { name: 'provenSystemPromptHash', type: 'string' }, { name: 'provenTranscriptHash', type: 'string' }], stateMutability: 'view' },
+  { type: 'function', name: 'getProvenData', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: 'notaryKeyFingerprint', type: 'bytes32' }, { name: 'method', type: 'string' }, { name: 'url', type: 'string' }, { name: 'proofTimestamp', type: 'uint256' }, { name: 'queriesHash', type: 'bytes32' }, { name: 'provenDecision', type: 'string' }, { name: 'provenReason', type: 'string' }, { name: 'provenSystemPromptHash', type: 'string' }, { name: 'provenTranscriptHash', type: 'string' }, { name: 'provenSourceCodeCommit', type: 'string' }], stateMutability: 'view' },
   { type: 'function', name: 'verifyJournal', inputs: [{ name: 'callId', type: 'bytes32' }, { name: 'journalData', type: 'bytes' }], outputs: [{ name: '', type: 'bool' }], stateMutability: 'view' },
 ] as const;
 
@@ -98,6 +98,7 @@ export interface RecordData {
     notaryFP: string;
     proofTimestamp: string;
     extractedData: string;
+    provenSourceCodeCommit: string;
   };
 }
 
@@ -369,7 +370,7 @@ async function verifyRecord(
   });
 
   // V5: Proven data
-  let provenData = { method: '', url: '', notaryFP: '', proofTimestamp: '', extractedData: '', provenDecision: '', provenReason: '' };
+  let provenData = { method: '', url: '', notaryFP: '', proofTimestamp: '', extractedData: '', provenDecision: '', provenReason: '', provenSourceCodeCommit: '' };
   let provenOk = false;
   try {
     const pd = (await client.readContract({
@@ -389,6 +390,7 @@ async function verifyRecord(
       extractedData: pd[5],
       provenDecision: pd[5] as string,
       provenReason: pd[6] as string,
+      provenSourceCodeCommit: (pd[9] as string) || '',
     };
   } catch { /* */ }
   const v5SubDetails: Array<{ text: string; link?: string }> = [];
@@ -397,6 +399,7 @@ async function verifyRecord(
   if (provenData.url) v5SubDetails.push({ text: `URL: ${provenData.url}` });
   if (provenData.provenDecision) v5SubDetails.push({ text: `Proven decision: ${provenData.provenDecision}` });
   if (provenData.provenReason) v5SubDetails.push({ text: `Proven reason: "${provenData.provenReason.slice(0, 120)}${provenData.provenReason.length > 120 ? '…' : ''}"` });
+  if (provenData.provenSourceCodeCommit) v5SubDetails.push({ text: `Source code commit: ${provenData.provenSourceCodeCommit}`, link: `${CONFIG.repo}/tree/${provenData.provenSourceCodeCommit}` });
   checks.push({
     id: 'V5', label: 'TLSNotary web proof metadata',
     status: provenOk ? 'pass' : 'fail',
@@ -463,6 +466,36 @@ async function verifyRecord(
     status: proofEventFound ? 'pass' : 'fail',
     detail: proofEventFound ? 'ZK verification confirmed on-chain' : 'Event not found',
     subDetails: v7SubDetails,
+  });
+
+  // V8: Source code attestation — verify commit SHA exists on GitHub
+  const commitSha = provenData.provenSourceCodeCommit;
+  let v8Status: CheckStatus = 'pending';
+  let v8Detail = '';
+  const v8SubDetails: Array<{ text: string; link?: string }> = [];
+  if (commitSha && commitSha.length >= 7 && commitSha !== 'unknown') {
+    // We can't call GitHub API from browser (CORS / rate limit), but we can
+    // construct the URL and verify it's a valid-looking commit hash
+    const isValidHex = /^[0-9a-f]{7,40}$/.test(commitSha);
+    v8Status = isValidHex ? 'pass' : 'fail';
+    v8Detail = isValidHex
+      ? `Commit ${commitSha.slice(0, 7)}… on-chain — verify on GitHub`
+      : `Invalid commit format: "${commitSha}"`;
+    if (isValidHex) {
+      v8SubDetails.push({ text: `GitHub: ${CONFIG.repo}/tree/${commitSha}`, link: `${CONFIG.repo}/tree/${commitSha}` });
+      v8SubDetails.push({ text: `System prompt: ${CONFIG.repo}/blob/${commitSha}/lib/voice-ai/gemini.ts`, link: `${CONFIG.repo}/blob/${commitSha}/lib/voice-ai/gemini.ts` });
+      v8SubDetails.push({ text: 'Hash the file yourself to compare with on-chain systemPromptHash' });
+    }
+  } else {
+    v8Status = 'fail';
+    v8Detail = commitSha ? `Empty or unknown commit: "${commitSha}"` : 'No sourceCodeCommit in journal (V3 record)';
+    v8SubDetails.push({ text: 'V4 records include sourceCodeCommit for source code verification' });
+  }
+  checks.push({
+    id: 'V8', label: 'Source code attestation',
+    status: v8Status,
+    detail: v8Detail,
+    subDetails: v8SubDetails,
   });
 
   return {

@@ -23,6 +23,7 @@ export interface DecisionRecord {
   reason: string;
   transcript: string;
   systemPromptHash: string;
+  sourceCodeCommit: string;
   callerHashShort: string;
   timestamp: string;
   conversationTurns: number;
@@ -47,18 +48,24 @@ export async function storeDecisionForProof(params: {
     .update(GeminiChat.getSystemPrompt())
     .digest('hex');
 
+  // Git commit SHA — injected at build time or read at runtime
+  const sourceCodeCommit = process.env.SOURCE_CODE_COMMIT
+    || process.env.NEXT_PUBLIC_SOURCE_CODE_COMMIT
+    || 'unknown';
+
   const now = new Date().toISOString();
 
   await query(
     `INSERT INTO decision_records
        (call_sid, decision, reason, transcript, system_prompt_hash,
-        caller_hash_short, conversation_turns, created_at, expires_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8::timestamptz + interval '1 hour')
+        source_code_commit, caller_hash_short, conversation_turns, created_at, expires_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9::timestamptz + interval '1 hour')
      ON CONFLICT (call_sid) DO UPDATE SET
        decision = EXCLUDED.decision,
        reason = EXCLUDED.reason,
        transcript = EXCLUDED.transcript,
        system_prompt_hash = EXCLUDED.system_prompt_hash,
+       source_code_commit = EXCLUDED.source_code_commit,
        caller_hash_short = EXCLUDED.caller_hash_short,
        conversation_turns = EXCLUDED.conversation_turns,
        created_at = EXCLUDED.created_at,
@@ -69,6 +76,7 @@ export async function storeDecisionForProof(params: {
       params.reason,
       params.transcript,
       systemPromptHash,
+      sourceCodeCommit,
       params.callerHashShort,
       params.conversationTurns,
       now,
@@ -81,6 +89,7 @@ export async function storeDecisionForProof(params: {
     reason: params.reason,
     transcript: params.transcript,
     systemPromptHash,
+    sourceCodeCommit,
     callerHashShort: params.callerHashShort,
     timestamp: now,
     conversationTurns: params.conversationTurns,
@@ -102,7 +111,7 @@ export async function getDecisionForProof(
 ): Promise<DecisionRecord | undefined> {
   const res = await query(
     `SELECT call_sid, decision, reason, transcript, system_prompt_hash,
-            caller_hash_short, conversation_turns, created_at
+            source_code_commit, caller_hash_short, conversation_turns, created_at
      FROM decision_records
      WHERE call_sid = $1 AND expires_at > NOW()`,
     [callSid],
@@ -117,6 +126,7 @@ export async function getDecisionForProof(
     reason: row.reason,
     transcript: row.transcript,
     systemPromptHash: row.system_prompt_hash,
+    sourceCodeCommit: row.source_code_commit || 'unknown',
     callerHashShort: row.caller_hash_short,
     timestamp: row.created_at instanceof Date
       ? row.created_at.toISOString()

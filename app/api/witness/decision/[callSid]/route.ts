@@ -33,16 +33,18 @@ export async function GET(
     .digest('hex');
 
   // Return clean JSON that vlayer will attest via TLSNotary.
-  // JMESPath extracts: ["decision", "reason", "systemPromptHash", "transcriptHash"]
+  // JMESPath extracts: ["decision", "reason", "systemPromptHash", "transcriptHash", "sourceCodeCommit"]
   return NextResponse.json({
     service: 'VeriCall',
-    version: '1.0',
+    version: '1.1',
     callSid: record.callSid,
     decision: record.decision,
     reason: record.reason,
     transcript: record.transcript,
     systemPromptHash: record.systemPromptHash,
     transcriptHash,
+    sourceCodeCommit: record.sourceCodeCommit,
+    sourceCodeUrl: `https://github.com/rtree/veriCall/tree/${record.sourceCodeCommit}`,
     callerHashShort: record.callerHashShort,
     timestamp: record.timestamp,
     conversationTurns: record.conversationTurns,
