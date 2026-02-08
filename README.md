@@ -1,4 +1,8 @@
-# VeriCall
+# ☎️ VeriCall
+
+> 🏴‍☠️ **HackMoney 2026 — but money is *already* being hacked — by Phone Call.**
+> $16 B lost to fraud in 2024 alone (FBI IC3). AI clones any voice from a 3-second clip (McAfee Labs).
+> We built a mathematical wall that can't be talked around.
 
 <p align="left">
   <a href="https://vericall-kkz6k4jema-uc.a.run.app/demo">
@@ -132,8 +136,8 @@ Every call produces a ZK proof containing these journal fields. Once on-chain, t
 The table shows *what* is non-repudiable. Here's *how* the Logic fields get locked:
 
 1. At **build time**, the server captures its git commit (`git rev-parse HEAD`)
-2. The **Decision API** embeds the commit SHA + system prompt hash in every JSON response
-3. **TLSNotary** attests the entire response in a single proof — decision, hashes, AND commit SHA
+2. The **Decision API(of VeriCall)** embeds the commit SHA + system prompt hash in every JSON response
+3. **TLSNotary(of vlayer)** attests the entire response is coming from Decision API(of VeriCall) and ZKProver(of vlayer) packs them in a single proof — decision, hashes, AND commit SHA
 4. The **contract** stores `provenSourceCodeCommit` and `provenSystemPromptHash` on-chain (enforces non-empty)
 5. **Anyone** can inspect the exact code at [`github.com/rtree/veriCall/tree/<commit>`](https://github.com/rtree/veriCall) — read the [screening rules](lib/voice-ai/gemini.ts#L124), recompute the prompt hash, and compare. If it doesn't match → **the server lied about its commit**
 

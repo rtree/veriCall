@@ -3,7 +3,7 @@ import Link from 'next/link';
 export default function Home() {
   return (
     <main style={{ padding: '2rem', maxWidth: '800px', margin: '0 auto' }}>
-      <h1 style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📞 VeriCall</h1>
+      <h1 style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>☎️VeriCall</h1>
       <p style={{ color: '#888', marginBottom: '2rem' }}>
         AI Phone Receptionist with On-chain Verification
       </p>

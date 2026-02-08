@@ -46,7 +46,7 @@ export async function sendCallNotification(notification: CallNotification): Prom
     ai_screen: 'AIスクリーニング中',
   }[notification.action];
 
-  const subject = `${actionEmoji} VeriCall: ${notification.from} からの着信を${actionText}`;
+  const subject = `${actionEmoji} ☎️VeriCall: ${notification.from} からの着信を${actionText}`;
 
   const html = `
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
@@ -80,13 +80,13 @@ export async function sendCallNotification(notification: CallNotification): Prom
       </table>
       
       <p style="color: #999; font-size: 12px;">
-        Powered by VeriCall
+        Powered by ☎️VeriCall
       </p>
     </div>
   `;
 
   const text = `
-VeriCall 着信通知
+☎️VeriCall 着信通知
 
 発信元: ${notification.from}
 着信先: ${notification.to}

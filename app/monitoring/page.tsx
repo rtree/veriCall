@@ -1,7 +1,7 @@
 export default function MonitoringPage() {
   return (
     <main style={{ padding: '2rem', maxWidth: '1000px', margin: '0 auto' }}>
-      <h1 style={{ fontSize: '2rem', marginBottom: '1rem' }}>📊 VeriCall Monitor</h1>
+      <h1 style={{ fontSize: '2rem', marginBottom: '1rem' }}>📊 ☎️VeriCall Monitor</h1>
       <p style={{ color: '#888', marginBottom: '2rem' }}>
         コールフローとWitness状況のリアルタイムモニタリング
       </p>

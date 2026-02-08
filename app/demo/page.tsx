@@ -370,7 +370,7 @@ export default function DemoPage() {
     const DECISION_LABELS: Record<number, string> = { 0: 'UNKNOWN', 1: 'ACCEPT', 2: 'BLOCK', 3: 'RECORD' };
 
     addLog('🔍', 'VERIFY', 'Starting independent on-chain verification…', '#a78bfa', 'complete');
-    addLog('', '', `Reading directly from Base Sepolia RPC — no VeriCall APIs used`, '#666', 'complete', undefined, true);
+    addLog('', '', `Reading directly from Base Sepolia RPC — no ☎️VeriCall APIs used`, '#666', 'complete', undefined, true);
     await wait(300);
 
     try {
@@ -591,7 +591,7 @@ export default function DemoPage() {
       <header style={styles.header}>
         <div style={styles.headerLeft}>
           <Link href="/" style={{ textDecoration: 'none', color: 'inherit' }}>
-            <span style={styles.logo}>⛓️ VeriCall</span>
+            <span style={styles.logo}>☎️VeriCall</span>
           </Link>
           <span style={styles.badge}>LIVE DEMO</span>
         </div>

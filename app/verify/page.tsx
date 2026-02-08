@@ -43,7 +43,7 @@ export default function VerifyPage() {
       {/* ─── Header ─────────────────────────────────────── */}
       <header style={styles.header}>
         <div style={styles.headerLeft}>
-          <span style={styles.logo}>⛓️ VeriCall</span>
+          <span style={styles.logo}>☎️VeriCall</span>
           <span style={styles.badge}>VERIFICATION</span>
         </div>
         <div style={styles.headerRight}>
@@ -75,7 +75,7 @@ export default function VerifyPage() {
           {' '}ZK-proof verification of AI-generated call decisions.
         </p>
         <p style={styles.trustNote}>
-          🔒 This page reads <strong>only</strong> from the public blockchain. No API keys, wallets, or trust in VeriCall required.
+          🔒 This page reads <strong>only</strong> from the public blockchain. No API keys, wallets, or trust in ☎️VeriCall required.
         </p>
 
         {state.phase === 'idle' && (
@@ -223,7 +223,7 @@ export default function VerifyPage() {
                 It connects directly to the public Base Sepolia RPC ({CONFIG.rpcUrl}).
               </p>
               <p style={{ marginBottom: '0.75rem' }}>
-                No VeriCall server-side APIs are called for any verification check.
+                No ☎️VeriCall server-side APIs are called for any verification check.
                 You can confirm this by inspecting network requests in DevTools.
               </p>
               <div style={{ marginTop: '1rem' }}>
@@ -254,7 +254,7 @@ npx tsx scripts/verify.ts`}
                 </pre>
               </div>
               <div style={styles.reproduceCard}>
-                <div style={styles.reproduceLabel}>Foundry (no VeriCall code needed)</div>
+                <div style={styles.reproduceLabel}>Foundry (no ☎️VeriCall code needed)</div>
                 <pre style={styles.codeBlock}>
 {`cast call ${CONFIG.registry} \\
   "getStats()(uint256,uint256,uint256,uint256)" \\
@@ -289,7 +289,7 @@ npx tsx scripts/verify.ts`}
 
       {/* ─── Footer ─────────────────────────────────────── */}
       <footer style={styles.footer}>
-        <span>VeriCall — Trust-Minimized AI Call Verification</span>
+        <span>☎️VeriCall — Trust-Minimized AI Call Verification</span>
         <a href={CONFIG.repo} target="_blank" rel="noopener" style={{ color: '#888' }}>
           GitHub ↗
         </a>
