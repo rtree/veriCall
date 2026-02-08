@@ -185,7 +185,7 @@ Call → AI → Decision → WebProof → ZK → On-Chain
 
 Open **[/verify](https://vericall-kkz6k4jema-uc.a.run.app/verify)** — runs 14+ automated checks per record, entirely client-side. No wallet, no API keys.
 
-<img width="1000" alt="Independent Verification — 45/45 checks passed on Base Sepolia" src="docs/screenshots/verify-all-checks-passed.png" />
+<img width="1000" alt="Independent Verification — 45/45 checks passed on Base Sepolia" src="https://github.com/user-attachments/assets/05cea7c4-14e9-47a5-bf72-3e7f0d2b9312" />
 
 ```bash
 npx tsx scripts/verify.ts          # verify all on-chain records
