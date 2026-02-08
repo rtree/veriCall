@@ -38,8 +38,6 @@ export default function VerifyPage() {
   const { state, run } = useVerify();
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
 
-  const allPassed = state.phase === 'done' && state.totalChecks === state.passedChecks;
-
   return (
     <div style={styles.page}>
       {/* ─── Header ─────────────────────────────────────── */}
@@ -86,59 +84,6 @@ export default function VerifyPage() {
           </button>
         )}
       </section>
-
-      {/* ─── Result Banner — per-record summary ──────── */}
-      {state.phase === 'done' && (() => {
-        const contractOk = state.contract?.checks.every(c => c.status === 'pass') ?? true;
-        const contractActive = state.contract?.checks.filter(c => c.status !== 'skip').length ?? 0;
-        const contractPassed = state.contract?.checks.filter(c => c.status === 'pass').length ?? 0;
-        const recordSummaries = state.records.map(r => {
-          const active = r.checks.filter(c => c.status !== 'skip');
-          return { index: r.index, decision: r.decision, ok: active.every(c => c.status === 'pass'), passed: active.filter(c => c.status === 'pass').length, total: active.length };
-        });
-        const failedRecords = recordSummaries.filter(r => !r.ok);
-        return (
-          <div style={{
-            ...styles.resultBanner,
-            borderColor: allPassed ? '#22c55e' : failedRecords.length > 0 ? '#ef4444' : '#22c55e',
-            background: allPassed ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.04)',
-          }}>
-            {/* Overall headline */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', width: '100%' }}>
-              <div style={{ fontSize: '2rem' }}>{allPassed ? '✅' : '⚠️'}</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: '1.2rem', fontWeight: 700, color: allPassed ? '#22c55e' : '#eab308' }}>
-                  {allPassed ? 'ALL RECORDS VERIFIED' : `${failedRecords.length} of ${recordSummaries.length} record${recordSummaries.length > 1 ? 's' : ''} with issues`}
-                </div>
-                <div style={{ color: '#888', fontSize: '0.8rem', marginTop: '0.2rem' }}>
-                  {state.passedChecks}/{state.totalChecks} checks on {CONFIG.network}
-                </div>
-              </div>
-            </div>
-            {/* Per-item summary pills */}
-            <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: '0.4rem', width: '100%', marginTop: '0.5rem' }}>
-              <span style={{
-                padding: '0.25rem 0.65rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600,
-                background: contractOk ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
-                color: contractOk ? '#22c55e' : '#ef4444',
-                border: `1px solid ${contractOk ? '#22c55e30' : '#ef444430'}`,
-              }}>
-                {contractOk ? '✓' : '✗'} Contract {contractPassed}/{contractActive}
-              </span>
-              {recordSummaries.map(r => (
-                <span key={r.index} style={{
-                  padding: '0.25rem 0.65rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600,
-                  background: r.ok ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
-                  color: r.ok ? '#22c55e' : '#ef4444',
-                  border: `1px solid ${r.ok ? '#22c55e30' : '#ef444430'}`,
-                }}>
-                  {r.ok ? '✓' : '✗'} #{r.index} {r.passed}/{r.total}
-                </span>
-              ))}
-            </div>
-          </div>
-        );
-      })()}
 
       {/* ─── Loading State ──────────────────────────────── */}
       {(state.phase === 'contract' || state.phase === 'records') && (
@@ -213,7 +158,7 @@ export default function VerifyPage() {
             <div style={styles.recordList}>
               {sorted.map(rec => {
                 const isSelected = selectedIdx === rec.index;
-                const allOk = rec.checks.every(c => c.status === 'pass' || c.status === 'skip');
+                const allOk = rec.checks.every(c => c.status === 'pass');
                 return (
                   <div
                     key={rec.index}
@@ -361,7 +306,7 @@ npx tsx scripts/verify.ts`}
 // ═══════════════════════════════════════════════════════════════
 
 function RecordDetail({ record }: { record: RecordData }) {
-  const allOk = record.checks.every(c => c.status === 'pass' || c.status === 'skip');
+  const allOk = record.checks.every(c => c.status === 'pass');
 
   return (
     <div style={styles.recordCard}>
@@ -450,10 +395,10 @@ function RecordDetail({ record }: { record: RecordData }) {
                 ))}
               </div>
               <span style={{
-                color: c.status === 'pass' ? '#22c55e' : c.status === 'skip' ? '#888' : '#ef4444',
+                color: c.status === 'pass' ? '#22c55e' : '#ef4444',
                 fontWeight: 600, flexShrink: 0,
               }}>
-                {c.status === 'pass' ? '✓' : c.status === 'skip' ? '—' : '✗'}
+                {c.status === 'pass' ? '✓' : '✗'}
               </span>
             </div>
           </div>
@@ -510,21 +455,6 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#22c55e', color: '#000', border: 'none',
     borderRadius: '8px', fontSize: '1rem', fontWeight: 700,
     cursor: 'pointer', letterSpacing: '0.02em',
-  },
-
-  // Result Banner
-  resultBanner: {
-    display: 'flex', alignItems: 'center', gap: '1.25rem',
-    padding: '1.5rem', borderRadius: '12px',
-    border: '1px solid', marginTop: '1.5rem',
-    flexWrap: 'wrap' as const,
-  },
-  progressBarOuter: {
-    width: '100%', height: '6px', background: '#1a1a1a',
-    borderRadius: '3px', marginTop: '0.5rem',
-  },
-  progressBarInner: {
-    height: '6px', borderRadius: '3px', transition: 'width 0.5s ease',
   },
 
   // Loading
