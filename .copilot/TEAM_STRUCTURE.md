@@ -4,7 +4,7 @@ This document defines the team roles and responsibilities for developing and mai
 
 ## Team Members
 
-### 👔 Manager (マネージャー)
+### Manager (マネージャー)
 **Role**: Decision-making & Prioritization
 
 - Makes final decisions on features and bug fixes
@@ -13,7 +13,7 @@ This document defines the team roles and responsibilities for developing and mai
 - Coordinates between team members
 - Approves "GO" for implementations
 
-### 🔬 Researcher (リサーチャー)
+### Researcher (リサーチャー)
 **Role**: Technical Investigation & Root Cause Analysis
 
 - Analyzes logs to identify issues
@@ -22,7 +22,7 @@ This document defines the team roles and responsibilities for developing and mai
 - Investigates best practices from official sources
 - Assesses implementation difficulty and risk
 
-### 📋 Planner (プランナー)
+### Planner (プランナー)
 **Role**: Implementation Planning & Strategy
 
 - Creates phased implementation plans
@@ -31,7 +31,7 @@ This document defines the team roles and responsibilities for developing and mai
 - Structures debugging workflows
 - Organizes task dependencies
 
-### 👷 Worker (ワーカー)
+### Worker (ワーカー)
 **Role**: Code Implementation & Execution
 
 - Implements code changes
@@ -65,12 +65,12 @@ This document defines the team roles and responsibilities for developing and mai
 ## Active Focus Areas
 
 ### Current Sprint (as of 2026-02-06)
-- ✅ Phase 1: Barge-in handling improvements
-- ✅ Phase 1: Timestamp tracking
-- ✅ Fix: Wait for AI to finish speaking before ending call
-- ✅ Fix: Add summary to email
-- 🔄 Fix: BLOCK tag detection (全角→半角)
-- 🔒 Phase 2: VAD events (deferred - requires API migration)
+- [x] Phase 1: Barge-in handling improvements
+- [x] Phase 1: Timestamp tracking
+- [x] Fix: Wait for AI to finish speaking before ending call
+- [x] Fix: Add summary to email
+- [ ] Fix: BLOCK tag detection (全角→半角)
+- [ ] Phase 2: VAD events (deferred - requires API migration)
 
 ---
 

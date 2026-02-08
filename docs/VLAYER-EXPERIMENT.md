@@ -34,7 +34,7 @@ curl -X POST https://web-prover.vlayer.xyz/api/v1/prove \
   ...
 ```
 
-> ⚠️ ドキュメントには "The included credentials are for limited public use. For production use, please contact our team." と記載
+> ドキュメントには "The included credentials are for limited public use. For production use, please contact our team." と記載
 
 ## 実験結果
 
@@ -44,7 +44,7 @@ curl -X POST https://web-prover.vlayer.xyz/api/v1/prove \
 pnpm play docs/playground/vlayer/01-hello-vlayer.ts
 ```
 
-✅ **成功**
+**成功**
 
 - ZK Prover `/guest-id` 接続OK
 - Guest ID: `0x6e251f4d993427d02a4199e1201f3b54462365d7c672a51be57f776d509b47eb`
@@ -57,7 +57,7 @@ pnpm play docs/playground/vlayer/01-hello-vlayer.ts
 pnpm play docs/playground/vlayer/02-web-proof.ts
 ```
 
-✅ **成功**
+**成功**
 
 対象URL: `https://data-api.binance.vision/api/v3/ticker/price?symbol=ETHUSDC`
 
@@ -73,7 +73,7 @@ pnpm play docs/playground/vlayer/02-web-proof.ts
 pnpm play docs/playground/vlayer/03-zk-proof.ts
 ```
 
-✅ **成功**
+**成功**
 
 抽出クエリ: `["price", "symbol"]` (JMESPath)
 
@@ -141,11 +141,11 @@ pnpm play docs/playground/vlayer/03-zk-proof.ts
 
 ## 次のステップ
 
-- [x] Twilio開通待ち → ✅ Done (Twilio Programmable Voice)
-- [x] VeriCall `/api/decision/:callId` エンドポイント実装 → ✅ `GET /api/witness/decision/:callSid`
-- [x] Cloud Runデプロイ（HTTPSが必要） → ✅ `vericall-kkz6k4jema-uc.a.run.app`
-- [x] 本番用Vlayer APIキー取得（要チーム連絡） → ✅ Using limited public credentials
-- [x] Base Sepolia Verifierコントラクト作成 → ✅ `VeriCallRegistryV3` at `0x4395cf02b8d343aae958bda7ac6ed71fbd4abd48`
+- [x] Twilio開通待ち → Done (Twilio Programmable Voice)
+- [x] VeriCall `/api/decision/:callId` エンドポイント実装 → `GET /api/witness/decision/:callSid`
+- [x] Cloud Runデプロイ（HTTPSが必要） → `vericall-kkz6k4jema-uc.a.run.app`
+- [x] 本番用Vlayer APIキー取得（要チーム連絡） → Using limited public credentials
+- [x] Base Sepolia Verifierコントラクト作成 → `VeriCallRegistryV3` at `0x4395cf02b8d343aae958bda7ac6ed71fbd4abd48`
 
 ## 参考リンク
 

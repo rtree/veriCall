@@ -25,46 +25,46 @@ AI decision non-repudiation + public accountability, anchored on-chain.
 
 <img width="1000" alt="VeriCall Live Demo — full pipeline from phone call to on-chain record" src="docs/screenshots/demo-pipeline-complete.png" />
 
-## 📞 The Problem
+## The Problem
 
 Phone calls remain one of the most universal communication tools — used across all generations, from grandparents to business professionals. But **trust in phone calls is quietly eroding**.
 
 Spam, robocalls, and impersonation fraud have made people hesitant to pick up unknown numbers. And now, AI voice synthesis is lowering the barrier further — making it possible to fake a familiar voice from a short sample.
 
-- 🇺🇸 **"Grandparent Scams"** — USA: phone fraud costs billions annually
-- 🇪🇺 **"Impersonation Scams"** — Europe: AI-generated voice fraud is emerging
-- 🇯🇵 **"It's me Scam (OreOre オレオレ詐欺)"** — Japan: a decades-old problem now amplified by voice AI
+- **"Grandparent Scams"** — USA: phone fraud costs billions annually
+- **"Impersonation Scams"** — Europe: AI-generated voice fraud is emerging
+- **"It's me Scam (OreOre オレオレ詐欺)"** — Japan: a decades-old problem now amplified by voice AI
 
 The phone itself is not the problem — **the lack of verifiable trust is**. When you can't confirm who's really calling or what really happened on a call, the phone becomes less useful for everyone.
 
-## 🛡️ The Solution: A Mathematical Gatekeeper
+## The Solution: A Mathematical Gatekeeper
 
 VeriCall puts a wall of logic — without emotions — in front of every call. The AI answers first, screens with fixed rules, seals the decision on-chain, and **nobody can rewrite the story afterward**.
 
-📞 Call → 🤖 AI → ⚖️ Decision → 🔐 TLSNotary → 🧮 ZK Proof → ⛓️ On-Chain
+Call → AI → Decision → TLSNotary → ZK Proof → On-Chain
 
-### Step 1: 🤖 AI Screens the Call
+### Step 1: AI Screens the Call
 
 A real phone call comes in via Twilio. The AI (Gemini 2.5 Flash) answers before it reaches your family — no emotions, no exceptions. Even if a scammer cries, screams, or fabricates an emergency, the AI stays calm and checks **facts** and **identity** using **fixed screening rules** embedded in [public source code](https://github.com/rtree/veriCall). It decides: **BLOCK** (spam alert sent to you) or **RECORD** (call connected or email notification).
 
-### Step 2: 🔐 Web Proof (TLSNotary)
+### Step 2: Web Proof (TLSNotary)
 
 [vlayer](https://vlayer.xyz)'s Web Prover fetches the Decision API response using TLSNotary — a third-party Notary joins the TLS session via MPC, never sees the plaintext, but cryptographically attests that VeriCall's server genuinely returned this JSON. The response contains decision **Input**, **Output**, and **Logic** (source code commit) — all attested in a single proof.
 
-### Step 3: 🧮 ZK Proof (RISC Zero)
+### Step 3: ZK Proof (RISC Zero)
 
 vlayer's ZK Prover compresses the Web Proof into a succinct RISC Zero proof. JMESPath extraction pulls 5 fields — `decision`, `reason`, `systemPromptHash`, `transcriptHash`, `sourceCodeCommit` — into a 10-field ABI-encoded journal. Input + Output + Logic are sealed together.
 
-### Step 4: ⛓️ On-Chain Record
+### Step 4: On-Chain Record
 
-The proof and journal are submitted to `VeriCallRegistry` on Base Sepolia. The contract validates **every field** before storing — 15 on-chain checks including **Decision–Journal Binding** (💡 core technical contribution: the submitted decision must `keccak256`-match the proven decision — you can't submit a valid proof with "RECORD" and store "BLOCK"). → [Full contract checks](DESIGN.md#37-on-chain-verification--contract-design)
+The proof and journal are submitted to `VeriCallRegistry` on Base Sepolia. The contract validates **every field** before storing — 15 on-chain checks including **Decision–Journal Binding** (core technical contribution: the submitted decision must `keccak256`-match the proven decision — you can't submit a valid proof with "RECORD" and store "BLOCK"). → [Full contract checks](DESIGN.md#37-on-chain-verification--contract-design)
 
-> 🔍 **You don't need to take VeriCall's word for it.** Every on-chain record — decision, reasoning, ruleset hash, transcript hash, source code commit — is publicly readable. Verify [from your browser](https://vericall-kkz6k4jema-uc.a.run.app/verify) or [from the CLI](scripts/verify.ts). No API keys, no VeriCall servers required.
+> **You don't need to take VeriCall's word for it.** Every on-chain record — decision, reasoning, ruleset hash, transcript hash, source code commit — is publicly readable. Verify [from your browser](https://vericall-kkz6k4jema-uc.a.run.app/verify) or [from the CLI](scripts/verify.ts). No API keys, no VeriCall servers required.
 
 ## Architecture
 
 ```
-                              💻 GitHub (Public Repository)
+                              GitHub (Public Repository)
                               github.com/rtree/veriCall
                               ┌─────────────────────────────┐
                               │ gemini.ts    → screening rules│
@@ -74,7 +74,7 @@ The proof and journal are submitted to `VeriCallRegistry` on Base Sepolia. The c
                                              │ git commit SHA
                                              │ embedded at build time
                                              ▼
-  📞 Caller ──→ Twilio ──→ WebSocket ──→ VeriCall Server (Cloud Run)
+     Caller ──→ Twilio ──→ WebSocket ──→ VeriCall Server (Cloud Run)
                                               │
                               ┌────────────────┴────────────────┐
                               │         Audio Pipeline          │
@@ -87,7 +87,7 @@ The proof and journal are submitted to `VeriCallRegistry` on Base Sepolia. The c
                     ┌──────────────────────────┤
                     │                          │
                     ▼                          ▼
-           📧 Email Notify          Decision API (HTTPS)
+              Email Notify          Decision API (HTTPS)
                                     ┌─────────────────────────┐
                                     │ decision     (Output)   │
                                     │ reason       (Output)   │
@@ -115,7 +115,7 @@ The proof and journal are submitted to `VeriCallRegistry` on Base Sepolia. The c
                                     15 on-chain validations
                                                  │
                                                  ▼
-                                         🔍 Anyone
+                                            Anyone
                                     verifies on-chain via /verify
                                     + reads Logic on GitHub at
                                       proven commit
@@ -135,7 +135,7 @@ Every call produces a ZK proof containing these journal fields. Once on-chain, t
 | **Logic** | **Source code ** | `provenSourceCodeCommit` (git SHA) | TLSNotary attests server response → ZK extracts → contract requires non-empty. [Inspect on GitHub](https://github.com/rtree/veriCall). |
 | | **Privacy** | | Phone numbers never go on-chain. Transcript is hashed. Reasoning is plaintext — intentional, because accountability requires public auditability. |
 
-### 🔗 How Logic Gets Proven — GitHub Code Attestation
+### How Logic Gets Proven — GitHub Code Attestation
 
 The table shows *what* is non-repudiable. Here's *how* the Logic fields get locked:
 
@@ -149,9 +149,9 @@ The table shows *what* is non-repudiable. Here's *how* the Logic fields get lock
 
 The table above shows that **Input, Logic, and Output are all non-repudiable**:
 
-- ✅ **Input** — `transcriptHash` seals which conversation was evaluated
-- ✅ **Output** — `decision` and `reason` are bound via `keccak256` — inseparable from the proof
-- ✅ **Logic** — `sourceCodeCommit` points to [public code on GitHub](https://github.com/rtree/veriCall). Anyone can read the [AI rules](lib/voice-ai/gemini.ts#L124), the [hash computation](lib/witness/decision-store.ts#L46), and the [API response format](app/api/witness/decision/%5BcallSid%5D/route.ts#L30) at the proven commit. If on-chain hashes don't match → **the server lied about its commit**.
+- **Input** — `transcriptHash` seals which conversation was evaluated
+- **Output** — `decision` and `reason` are bound via `keccak256` — inseparable from the proof
+- **Logic** — `sourceCodeCommit` points to [public code on GitHub](https://github.com/rtree/veriCall). Anyone can read the [AI rules](lib/voice-ai/gemini.ts#L124), the [hash computation](lib/witness/decision-store.ts#L46), and the [API response format](app/api/witness/decision/%5BcallSid%5D/route.ts#L30) at the proven commit. If on-chain hashes don't match → **the server lied about its commit**.
 
 **What remains — two honest gaps:**
 
@@ -175,13 +175,13 @@ The table above shows that **Input, Logic, and Output are all non-repudiable**:
 
 ## Try It Yourself
 
-### 📞 Live Demo
+### Live Demo
 
 Open **[/demo](https://vericall-kkz6k4jema-uc.a.run.app/demo)** — call the number shown and watch the full pipeline in real-time:
 
-📞 Call → 🤖 AI → ⚖️ Decision → 🔐 WebProof → 🧮 ZK → ⛓️ On-Chain
+Call → AI → Decision → WebProof → ZK → On-Chain
 
-### 🔍 Verify Records
+### Verify Records
 
 Open **[/verify](https://vericall-kkz6k4jema-uc.a.run.app/verify)** — runs 14+ automated checks per record, entirely client-side. No wallet, no API keys.
 
@@ -198,11 +198,11 @@ This pattern — **committing an AI decision, its inputs, and its rules to an im
 
 | Domain | What's Verified |
 |--------|------------------|
-| 📞 Call Screening | AI classification committed on-chain |
-| 📄 Resume Screening | AI evaluation committed on-chain |
-| 🏦 Loan Decisions | AI assessment committed on-chain |
-| 🛡️ Content Moderation | AI moderation committed on-chain |
-| ⚖️ Insurance Claims | AI claim decision committed on-chain |
+| Call Screening | AI classification committed on-chain |
+| Resume Screening | AI evaluation committed on-chain |
+| Loan Decisions | AI assessment committed on-chain |
+| Content Moderation | AI moderation committed on-chain |
+| Insurance Claims | AI claim decision committed on-chain |
 
 The proof pipeline is domain-agnostic; only the screening rules change.
 
@@ -229,7 +229,7 @@ The proof pipeline is domain-agnostic; only the screening rules change.
 
 ## Status & Roadmap
 
-**✅ Working today** — the full pipeline is live and verifiable:
+**Working today** — the full pipeline is live and verifiable:
 
 - Real phone call → AI screening (Gemini 2.5 Flash) → BLOCK / RECORD decision
 - TLSNotary Web Proof → RISC Zero ZK Proof → 10-field journal with Input + Output + Logic
@@ -237,7 +237,7 @@ The proof pipeline is domain-agnostic; only the screening rules change.
 - `sourceCodeCommit` on-chain → [public GitHub repo](https://github.com/rtree/veriCall) → anyone audits the Logic
 - Independent verification via [browser](https://vericall-kkz6k4jema-uc.a.run.app/verify) and [CLI](scripts/verify.ts) — no API keys, no VeriCall servers
 
-**🔮 Closing the Trust Gaps** — from the [Trust Model](#trust-model):
+**Closing the Trust Gaps** — from the [Trust Model](#trust-model):
 
 | Gap | Solution | Effect |
 |-----|----------|--------|
@@ -247,7 +247,7 @@ The proof pipeline is domain-agnostic; only the screening rules change.
 
 When all three close → **Input, Output, AND Logic are mathematically proven end-to-end** (see Trust Evolution diagram above).
 
-**🏛️ Who Writes the Rules?** — today it's a single operator. On-chain `systemPromptHash` opens the door:
+**Who Writes the Rules?** — today it's a single operator. On-chain `systemPromptHash` opens the door:
 
 | Model | How It Works |
 |-------|--------------|

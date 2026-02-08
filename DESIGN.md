@@ -419,7 +419,7 @@ npx tsx scripts/verify.ts --record 2   # verify a specific record
 
 Open [/demo](https://vericall-kkz6k4jema-uc.a.run.app/demo) — shows the full pipeline in real-time with a visual step indicator:
 
-📞 Call → 🤖 AI Screen → ⚖️ Decision → 🔐 WebProof → 🧮 ZK → ⛓️ On-Chain
+Call → AI Screen → Decision → WebProof → ZK → On-Chain
 
 After completion, links directly to the Verification page to independently verify the record.
 
@@ -433,9 +433,9 @@ npx tsx scripts/demo.ts --local  # connect to local dev server
 ```
 
 When a phone call comes in, the CLI shows:
-1. 📞 Call started → 🗣️ Conversation log → 🤖 AI Decision
-2. 📧 Email sent → 🔐 Web Proof → 🧮 ZK Proof → ⛓️ On-Chain TX
-3. 🔍 Auto-Verification — immediately reads the record back from chain and runs 12 checks
+1. Call started → Conversation log → AI Decision
+2. Email sent → Web Proof → ZK Proof → On-Chain TX
+3. Auto-Verification — immediately reads the record back from chain and runs 12 checks
 
 The CLI auto-reconnects on disconnect. Bearer auth (`VERICALL_DEMO_TOKEN`) required.
 
@@ -748,7 +748,7 @@ vlayer offers two integration paths:
 
 ### 3.9 Verifier Honesty: MockVerifier vs Production
 
-> **⚠️ Hackathon Deployment**: VeriCall currently uses a `RiscZeroMockVerifier` for ZK proof verification. This section explains exactly what that means, what it doesn't mean, and why this is the standard approach for RISC Zero-based dApps before production prover availability.
+> **Hackathon Deployment**: VeriCall currently uses a `RiscZeroMockVerifier` for ZK proof verification. This section explains exactly what that means, what it doesn't mean, and why this is the standard approach for RISC Zero-based dApps before production prover availability.
 
 #### What the MockVerifier Does
 
@@ -858,7 +858,7 @@ The key difference: in V3, verifying hashes required VeriCall to *separately pub
 
 This is **public accountability through immutable commitment + auditable source code** — a meaningful step beyond simple server attestation.
 
-#### 🔗 GitHub Code Attestation: Source Code Accountability
+#### GitHub Code Attestation: Source Code Accountability
 
 > **GitHub Code Attestation** is VeriCall's approach to linking on-chain records to auditable source code. The git commit SHA of the running server is embedded in every decision, attested by TLSNotary, and stored on-chain — creating a verifiable chain from decision to code.
 
