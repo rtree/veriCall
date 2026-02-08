@@ -131,12 +131,14 @@ jobs:
             --platform managed \
             --allow-unauthenticated \
             --port 8080 \
-            --memory 2Gi \
-            --cpu 2 \
+            --memory 4Gi \
+            --cpu 4 \
+            --concurrency 10 \
             --min-instances 1 \
             --max-instances 1 \
             --session-affinity \
             --timeout 600 \
+            --cpu-boost \
             --execution-environment gen2 \
             --no-cpu-throttling \
             --add-cloudsql-instances=ethglobal-479011:us-central1:vericall-db \
