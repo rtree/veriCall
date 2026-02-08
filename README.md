@@ -13,9 +13,11 @@
 
 **Hello! HackMoney 2026! but money is *already* being hacked**
 
-**— by Scam Phone Call, $16 B in 2024 alone (FBI IC3).**
+**— by Scam Phone Call**
 
-**We built a AI wall for protecting that Money.**
+**It's huge, as $16 B in 2024 alone (FBI IC3).**
+
+**We built an AI wall for protecting that Money.**
 
 **— protecting Your Family using AI receptionist with Verifiable Trust**
 
