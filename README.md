@@ -15,10 +15,9 @@
 
 **— by Scam Phone Call, $16 B in 2024 alone (FBI IC3).**
 
-**We built a AI wall for protecting that Money. A "Mathematical Gatekeeper"**
+**We built a AI wall for protecting that Money.**
 
-**— Protecting Your Family from AI Scams with Verifiable Trust**
-
+**— protecting Your Family using AI receptionist with Verifiable Trust**
 
 AI decision non-repudiation + public accountability, anchored on-chain.
 
