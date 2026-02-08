@@ -90,18 +90,18 @@ Every call produces a ZK proof containing these journal fields. Once on-chain, t
 
 ## Trust Model
 
-**Honest boundaries — what the proofs do NOT guarantee:**
-- That the deployed binary *exactly* matches the proven commit — requires reproducible builds or TEE. If the binary differs, behavior diverges from public code — a detectable inconsistency.
-- That the AI model internally computed the decision honestly — TLSNotary proves what the *server returned*, not what the *model computed*. The source code *shows* a Gemini API call — deviation is a falsified commit.
+The table above shows that **Input, Logic, and Output are all non-repudiable**:
 
-**What becomes verifiable through public source code:**
+- ✅ **Input** — `transcriptHash` seals which conversation was evaluated
+- ✅ **Output** — `decision` and `reason` are bound via `keccak256` — inseparable from the proof
+- ✅ **Logic** — `sourceCodeCommit` points to [public code on GitHub](https://github.com/rtree/veriCall). Anyone can read the [AI rules](lib/voice-ai/gemini.ts#L124), the [hash computation](lib/witness/decision-store.ts#L46), and the [API response format](app/api/witness/decision/%5BcallSid%5D/route.ts#L30) at the proven commit. If on-chain hashes don't match → **the server lied about its commit**.
 
-The proven commit links to [auditable code on GitHub](https://github.com/rtree/veriCall). Anyone can:
-- Read [`gemini.ts`](lib/voice-ai/gemini.ts#L124) — the exact AI screening rules (system prompt)
-- Read [`decision-store.ts`](lib/witness/decision-store.ts#L46) — how `systemPromptHash` is computed
-- Read [`route.ts`](app/api/witness/decision/%5BcallSid%5D/route.ts#L30) — how `transcriptHash` is computed
+**What remains — two honest gaps:**
 
-If on-chain hashes don't match the code at the proven commit → **the server lied about its commit**.
+| Gap | What It Means | How It Gets Closed |
+|-----|---------------|--------------------|
+| **Binary ≠ Commit** | The deployed binary might not exactly match the proven commit | Reproducible builds or TEE — if the binary differs, behavior diverges from public code (a detectable inconsistency) |
+| **AI Inference** | TLSNotary proves what the *server returned*, not what the *model computed* internally | Google Vertex AI API attestation or TEE — proving the model itself returned this output |
 
 ### 🔗 How Source Code Gets Proven
 
@@ -147,25 +147,39 @@ The result: every on-chain record points to a specific, public, auditable snapsh
                     │                          │
                     ▼                          ▼
            📧 Email Notify          Decision API (HTTPS)
-                                               │
-                                               ▼
+                                    Returns JSON:
+                                    ┌─────────────────────────┐
+                                    │ decision     (Output)   │
+                                    │ reason       (Output)   │
+                                    │ transcriptHash (Input)  │
+                                    │ promptHash   (Logic)    │
+                                    │ commitSHA    (Logic)    │
+                                    └────────────┬────────────┘
+                                                 │
+                                    TLSNotary attests entire
+                                    response in single proof
+                                                 │
+                                                 ▼
                                       vlayer Web Prover
                                         (TLSNotary)
-                                               │
-                                               ▼
+                                                 │
+                                                 ▼
                                       vlayer ZK Prover
                                         (RISC Zero)
-                                               │
-                                               ▼
-                                      Base Sepolia
-                                    VeriCallRegistry
-                                               │
-                    ┌──────────────────────────┤
-                    │                          │
-                    ▼                          ▼
-            🔍 Anyone               💻 GitHub (Public)
-            verifies on-chain       github.com/rtree/veriCall
-            via /verify             Audit source at proven commit
+                                    Seals Input + Output + Logic
+                                    into 10-field ABI journal
+                                                 │
+                                                 ▼
+                                        Base Sepolia
+                                      VeriCallRegistry
+                                    15 on-chain validations
+                                                 │
+                    ┌────────────────────────────┤
+                    │                            │
+                    ▼                            ▼
+            🔍 Anyone                  💻 GitHub (Public)
+            verifies on-chain          github.com/rtree/veriCall
+            via /verify                Read Logic at proven commit
 ```
 
 > ⚠️ **Hackathon Deployment**: The ZK seal verifier uses `MockVerifier` — vlayer's ZK Prover has not yet shipped production Groth16 proofs. **All other 14 on-chain checks are real and enforced**: journal decode, notary validation, URL binding, decision–journal `keccak256` matching, hash presence, source code commit. The contract is production-ready — swap `MockVerifier` → `RiscZeroVerifierRouter` with zero code changes. → [Details](DESIGN.md#39-verifier-honesty-mockverifier-vs-production)
