@@ -175,7 +175,7 @@ Open **[/demo](https://vericall-kkz6k4jema-uc.a.run.app/demo)** — call the num
 
 ### 🔍 Verify Records
 
-Open **[/verify](https://vericall-kkz6k4jema-uc.a.run.app/verify)** — runs 12 automated checks per record, entirely client-side. No wallet, no API keys.
+Open **[/verify](https://vericall-kkz6k4jema-uc.a.run.app/verify)** — runs 14+ automated checks per record, entirely client-side. No wallet, no API keys.
 
 <img width="1000" alt="Independent Verification — 45/45 checks passed on Base Sepolia" src="docs/screenshots/verify-all-checks-passed.png" />
 

@@ -253,13 +253,13 @@ async function main(): Promise<void> {
   report.contractChecks.push(c1);
   if (!c1.passed) throw new Error(`No contract at ${CONFIG.registry} — cannot verify`);
 
-  // C2: Contract responds as VeriCallRegistryV3
+  // C2: Contract responds as VeriCallRegistryV4
   const stats = (await client.readContract({
     address: CONFIG.registry, abi: REGISTRY_ABI, functionName: 'getStats',
   })) as [bigint, bigint, bigint, bigint];
   const totalRecords = Number(stats[0]);
   const c2: CheckResult = {
-    id: 'C2', label: 'Contract responds as VeriCallRegistryV3',
+    id: 'C2', label: 'Contract responds as VeriCallRegistryV4',
     passed: true,
     detail: `getStats() → total=${totalRecords}, accepted=${stats[1]}, blocked=${stats[2]}, recorded=${stats[3]}`,
   };
@@ -746,7 +746,7 @@ function buildCastCommands(report: VerificationReport): string[] {
     commands.push(`cast call ${CONFIG.registry} "getRecord(bytes32)" ${rec.callId} ${rpc}`);
     commands.push(``);
     commands.push(`# Decode proven data (TLSNotary + HTTP metadata)`);
-    commands.push(`cast call ${CONFIG.registry} "getProvenData(bytes32)(bytes32,string,string,uint256,bytes32,string,string,string,string)" ${rec.callId} ${rpc}`);
+    commands.push(`cast call ${CONFIG.registry} "getProvenData(bytes32)(bytes32,string,string,uint256,bytes32,string,string,string,string,string)" ${rec.callId} ${rpc}`);
     commands.push(``);
     commands.push(`# Verify journal integrity on-chain`);
     // We need the actual journal data hex
@@ -858,7 +858,7 @@ function printSummary(report: VerificationReport): void {
   console.log('');
   console.log(`  ${C.MG}Option B — Use Foundry (fully independent, no VeriCall code):${C.R}`);
   console.log(`  ${C.D}  $ cast call ${CONFIG.registry} "getStats()(uint256,uint256,uint256,uint256)" --rpc-url ${CONFIG.rpcUrl}${C.R}`);
-  console.log(`  ${C.D}  $ cast call ${CONFIG.registry} "getProvenData(bytes32)(bytes32,string,string,uint256,bytes32,string,string,string,string)" <callId> --rpc-url ${CONFIG.rpcUrl}${C.R}`);
+  console.log(`  ${C.D}  $ cast call ${CONFIG.registry} "getProvenData(bytes32)(bytes32,string,string,uint256,bytes32,string,string,string,string,string)" <callId> --rpc-url ${CONFIG.rpcUrl}${C.R}`);
   console.log(`  ${C.D}  # Run: npx tsx scripts/verify.ts --cast   for all commands${C.R}`);
   console.log('');
   console.log(`  ${C.MG}Option C — BaseScan (zero setup):${C.R}`);
@@ -873,7 +873,7 @@ function printSummary(report: VerificationReport): void {
   // Architecture one-liner
   console.log(`  ${C.B}Pipeline:${C.R}`);
   console.log(`  ${C.D}  Phone Call → AI Screening → Decision API → vlayer Web Proof (TLSNotary)${C.R}`);
-  console.log(`  ${C.D}  → RISC Zero ZK Proof (Groth16) → Base Sepolia VeriCallRegistryV3${C.R}`);
+  console.log(`  ${C.D}  → RISC Zero ZK Proof (Groth16) → Base Sepolia VeriCallRegistryV4${C.R}`);
   console.log('');
 }
 
