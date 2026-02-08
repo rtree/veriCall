@@ -191,7 +191,7 @@ Response JSON:
 ```json
 {
   "service": "VeriCall",
-  "version": "1.0",
+  "version": "1.1",
   "callSid": "CA...",
   "decision": "BLOCK",
   "reason": "Caller was selling SEO services...",
@@ -199,7 +199,9 @@ Response JSON:
   "systemPromptHash": "a3f2...",
   "callerHashShort": "8b2c...",
   "timestamp": "2026-02-07T...",
-  "conversationTurns": 4
+  "conversationTurns": 4,
+  "sourceCodeCommit": "fb6d3e0...",
+  "sourceCodeUrl": "https://github.com/rtree/veriCall/tree/fb6d3e0..."
 }
 ```
 
@@ -240,12 +242,12 @@ vlayer offers this as a SaaS.
 ```
 pipeline.ts
     │
-    └─ vlayerZKProof(webProof, ["decision", "reason", "systemPromptHash", "transcriptHash"])
+    └─ vlayerZKProof(webProof, ["decision", "reason", "systemPromptHash", "transcriptHash", "sourceCodeCommit"])
          │
          └─ POST https://zk-prover.vlayer.xyz/api/v0/compress-web-proof
               body: {
                 presentation: webProof,
-                extraction: { "response.body": { jmespath: ["decision", "reason", "systemPromptHash", "transcriptHash"] } }
+                extraction: { "response.body": { jmespath: ["decision", "reason", "systemPromptHash", "transcriptHash", "sourceCodeCommit"] } }
               }
               │
               └─ vlayer performs:
@@ -261,10 +263,10 @@ pipeline.ts
 |----------|-----------|----------------|
 | **4-1. zkVM ingestion** | Load WebProof into RISC Zero guest program | The proof is processed inside a deterministic execution environment — the same input always produces the same output |
 | **4-2. TLSNotary verification inside zkVM** | Verify the Notary's cryptographic signature over the TLS transcript | The WebProof from Step 3 is authentic — the Notary genuinely attested to this TLS session and the server response has not been altered |
-| **4-3. JMESPath field extraction** | Extract `["decision", "reason", "systemPromptHash", "transcriptHash"]` from the proven HTTP response body | The specific values (`BLOCK`, `Caller was selling SEO services...`, `a3f2...`, `1b2c...`) were genuinely present in the server's response — not injected or modified after the TLS session |
+| **4-3. JMESPath field extraction** | Extract `["decision", "reason", "systemPromptHash", "transcriptHash", "sourceCodeCommit"]` from the proven HTTP response body | The specific values (`BLOCK`, `Caller was selling SEO services...`, `a3f2...`, `1b2c...`, `fb6d3e0...`) were genuinely present in the server's response — not injected or modified after the TLS session |
 | **4-4. Seal + Journal output** | Generate the RISC Zero seal (proof) and ABI-encoded journal (public outputs) | All of the above verifications passed, and the results are bundled into a single cryptographic artifact (seal) with public outputs (journal) that can be verified on-chain by any smart contract |
 
-**JMESPath `["decision", "reason", "systemPromptHash", "transcriptHash"]`**: Specifies which fields to extract from the JSON response.
+**JMESPath `["decision", "reason", "systemPromptHash", "transcriptHash", "sourceCodeCommit"]`**: Specifies which 5 fields to extract from the JSON response.
 These values are encoded into the ZK Proof's public output (journal).
 
 > **What this proves (combined)**: The entire chain from "this HTTPS server returned this JSON" to "these specific fields were extracted from that response" is verified inside a zkVM. The resulting seal and journal constitute a succinct, on-chain-verifiable cryptographic proof of the data's authenticity and integrity.
@@ -362,39 +364,41 @@ Open [/verify](https://vericall-kkz6k4jema-uc.a.run.app/verify) in any browser. 
 
 The page performs checks in two phases:
 
-- **Phase 1 — Contract Checks (C1–C5)**: Verifies the contract exists, code is deployed, owner is set, verifier address points to MockVerifier, and imageId matches vlayer's guestId.
-- **Phase 2 — Per-Record Checks (V1–V7)**: For each on-chain record, verifies the ZK seal format, journal hash integrity (`keccak256`), journal ABI decode, extracted decision/reason match, source URL points to VeriCall's Decision API, and TLSNotary notary key is present.
+- **Phase 1 — Contract Checks (C1–C5)**: Verifies the contract exists, registry responds with stats, verifier address points to MockVerifier, imageId matches vlayer's guestId, and owner address is set.
+- **Phase 2 — Per-Record Checks (V1–V8 + V5b)**: For each on-chain record, verifies ZK proof was verified on-chain, journal hash integrity (`keccak256`), on-chain `verifyJournal()`, independent seal re-verification, TLSNotary metadata, decision consistency, registration event, ProofVerified event, and source code attestation.
 
 **File**: [app/verify/page.tsx](app/verify/page.tsx) + [app/verify/useVerify.ts](app/verify/useVerify.ts)
 
 #### Trust-Minimized Verification CLI (`scripts/verify.ts`)
 
 ```bash
-npx tsx scripts/verify.ts              # verify all on-chain records (12+ checks)
+npx tsx scripts/verify.ts              # verify all on-chain records (14+ checks)
 npx tsx scripts/verify.ts --deep       # also re-fetch Decision API for live check
 npx tsx scripts/verify.ts --cast       # output Foundry cast commands for manual verification
 npx tsx scripts/verify.ts --json       # JSON output for programmatic consumption
 npx tsx scripts/verify.ts --record 2   # verify a specific record
 ```
 
-**File**: [scripts/verify.ts](scripts/verify.ts) — 886 lines. 12 checks minimum (C1–C5 + V1–V7), up to 14 with `--deep` (V8–V9: URL re-fetch and content match). Every check shows the on-chain data, the expected value, and the result.
+**File**: [scripts/verify.ts](scripts/verify.ts) — 906 lines. 14 checks per record minimum (C1–C5 + V1–V8 + V5b), up to 16 with `--deep` (V8–V9: URL re-fetch and content match). Every check shows the on-chain data, the expected value, and the result.
 
 #### Check Reference
 
 | Phase | Check | What It Verifies |
 |-------|-------|------------------|
 | Contract | C1 | Contract has deployed bytecode |
-| Contract | C2 | Owner address is set |
-| Contract | C3 | Verifier address points to MockVerifier |
-| Contract | C4 | MockVerifier has deployed bytecode |
-| Contract | C5 | imageId matches vlayer guestId |
-| Record | V1 | ZK seal starts with `0xFFFFFFFF` (RISC Zero Mock selector) |
-| Record | V2 | `journalHash == keccak256(journalDataAbi)` |
-| Record | V3 | Journal ABI decodes to 9 valid fields |
-| Record | V4 | Extracted decision matches record's decision |
-| Record | V5 | Extracted reason matches record's reason |
-| Record | V6 | Source URL matches VeriCall Decision API pattern |
-| Record | V7 | TLSNotary notary key fingerprint is non-zero |
+| Contract | C2 | Registry responds (getStats returns record count) |
+| Contract | C3 | Verifier address configured (MockVerifier detection) |
+| Contract | C4 | imageId is set (non-zero, matches vlayer guestId) |
+| Contract | C5 | Owner address is set |
+| Record | V1 | ZK proof verified on-chain (`record.verified == true`) |
+| Record | V2 | Journal hash integrity (`keccak256(journalDataAbi) == journalHash`) |
+| Record | V3 | On-chain journal verification (`verifyJournal()` returns true) |
+| Record | V4 | Independent seal re-verification (`verifier.verify()` called directly) |
+| Record | V5 | TLSNotary web proof metadata (notary key, method, URL, extracted data) |
+| Record | V5b | Decision consistency (proven decision matches on-chain record) |
+| Record | V6 | `CallDecisionRecorded` event found on-chain |
+| Record | V7 | `ProofVerified` event emitted (ZK verification happened on-chain) |
+| Record | V8 | Source code attestation (commit SHA on-chain, verifiable on GitHub) |
 | Deep | V8 | Decision API URL still responds with valid JSON |
 | Deep | V9 | Fetched decision/reason match on-chain values |
 
@@ -453,7 +457,7 @@ veriCall/
 │   ├── page.tsx                        # Home page
 │   ├── demo/page.tsx                   # Live demo (SSE real-time pipeline viewer)
 │   ├── verify/
-│   │   ├── page.tsx                    # Trust-minimized verification (12 checks)
+│   │   ├── page.tsx                    # Trust-minimized verification (14+ checks)
 │   │   └── useVerify.ts               # Client-side verification hook (viem)
 │   ├── monitoring/page.tsx             # Dashboard UI
 │   ├── phone/
@@ -500,10 +504,16 @@ veriCall/
 │   │   └── IRiscZeroVerifier.sol       # RISC Zero standard interface
 │   └── deployment.json                 # Deployment info (Single Source of Truth)
 ├── scripts/
-│   ├── verify.ts                       # Trust-minimized verification CLI (14 checks, --deep)
+│   ├── verify.ts                       # Trust-minimized verification CLI (14+ checks, --deep)
 │   ├── demo.ts                         # Live demo CLI (SSE stream viewer)
-│   ├── check-registry.ts              # CLI registry inspector (V1/V3)
-│   └── deploy-v2.ts                   # V2 deployment script (historical)
+│   ├── check-registry.ts              # CLI registry inspector (V1–V4)
+│   ├── deploy-v2.ts                   # V2 deployment script (historical)
+│   ├── deploy-v4.ts                   # V4 deployment script (current)
+│   ├── setup-github-secrets.sh        # GitHub Secrets setup for CI/CD
+│   ├── test-gemini.ts                 # Gemini AI integration test
+│   ├── test-integration.ts            # End-to-end integration test
+│   ├── test-stt.ts                    # Speech-to-Text test
+│   └── test-tts.ts                    # Text-to-Speech test
 ├── docs/
 │   ├── DEPLOY.md                       # Deployment guide
 │   ├── VLAYER-EXPERIMENT.md            # vlayer integration experiments (historical)
@@ -660,7 +670,7 @@ git push origin master
 | SendGrid | Email notifications | API Key |
 | Base Sepolia RPC | EVM transaction submission | Public RPC |
 
-### 3.7 Contract Design
+### 3.7 On-Chain Verification & Contract Design
 
 **VeriCallRegistryV4** (deployed on Base Sepolia: `0x9a6015c6a0f13a816174995137e8a57a71250b81`)
 
@@ -924,6 +934,8 @@ See §3.9 for full details. Summary:
 
 ### 4.1 vlayer ZK Proof Investigation Results
 
+> See §3.9 for the full MockVerifier analysis and production migration path. This section documents the raw investigation data.
+
 vlayer's ZK Prover API (`/api/v0/compress-web-proof`) currently operates in an **"Under Development"** status.
 The actual proof data returned has the following structure:
 
@@ -1001,7 +1013,8 @@ abi.encode(
     string  provenDecision,        // Slot P+: "BLOCK" / "RECORD" / "ACCEPT" (from JMESPath)
     string  provenReason,          // Slot Q+: AI reasoning text (from JMESPath)
     string  provenSystemPromptHash,// Slot R+: SHA-256 of AI system prompt (from JMESPath)
-    string  provenTranscriptHash   // Slot S+: SHA-256 of conversation transcript (from JMESPath)
+    string  provenTranscriptHash,  // Slot S+: SHA-256 of conversation transcript (from JMESPath)
+    string  provenSourceCodeCommit // Slot T+: Git commit SHA of server source code (from JMESPath)
 )
 ```
 
@@ -1019,6 +1032,7 @@ Offset  Description
 0x00C0  uint256 offset_provenReason          (→ start position of provenReason)
 0x00E0  uint256 offset_provenSystemPromptHash (→ start position)
 0x0100  uint256 offset_provenTranscriptHash   (→ start position)
+0x0120  uint256 offset_provenSourceCodeCommit  (→ start position)
 ...
         [method string data: length + UTF-8 bytes + padding]
         [url string data: length + UTF-8 bytes + padding]
@@ -1040,9 +1054,10 @@ provenDecision:       "BLOCK"                     (AI decision extracted via JME
 provenReason:         "Caller was selling SEO services and cold-calling from a list"
 provenSystemPromptHash: "a3f2b1c4..."             (SHA-256 of the Gemini system prompt)
 provenTranscriptHash:   "1b2c3d4e..."             (SHA-256 of the conversation transcript)
+provenSourceCodeCommit: "fb6d3e0..."              (git commit SHA of VeriCall source code)
 ```
 
-Each field is individually ABI-encoded as a separate `string` value. The Solidity side decodes them with `abi.decode(journal, (bytes32, string, string, uint256, bytes32, string, string, string, string))`.
+Each field is individually ABI-encoded as a separate `string` value. The Solidity side decodes them with `abi.decode(journal, (bytes32, string, string, uint256, bytes32, string, string, string, string, string))`.
 
 The `provenSystemPromptHash` and `provenTranscriptHash` enable anyone to verify that the AI was given specific rules (by comparing the hash against the published system prompt) and that the conversation input was genuine (by comparing the hash against the raw transcript, if disclosed).
 The Solidity side stores this string as-is; off-chain consumers JSON-parse it.
@@ -1059,8 +1074,9 @@ The Solidity side stores this string as-is; off-chain consumers JSON-parse it.
     string memory provenDecision,
     string memory provenReason,
     string memory provenSystemPromptHash,
-    string memory provenTranscriptHash
-) = abi.decode(journalDataAbi, (bytes32, string, string, uint256, bytes32, string, string, string, string));
+    string memory provenTranscriptHash,
+    string memory provenSourceCodeCommit
+) = abi.decode(journalDataAbi, (bytes32, string, string, uint256, bytes32, string, string, string, string, string));
 ```
 
 ### 4.3 IRiscZeroVerifier Interface
@@ -1086,6 +1102,8 @@ interface IRiscZeroVerifier {
 RISC Zero uses SHA-256 internally, so the Solidity side must also use `sha256()`.
 
 ### 4.4 Mock vs Production Verifier
+
+> See §3.9 for the full analysis of what IS verified on-chain even with MockVerifier (15 checks), and the production migration path.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -1121,14 +1139,16 @@ RISC Zero uses SHA-256 internally, so the Solidity side must also use `sha256()`
 
 | | RiscZeroMockVerifier | RiscZeroVerifierRouter |
 |---|---|---|
-| Base Sepolia Address | `0x33014731e74f0610aefa9318b3e6600d51fd905e` | `0x0b144e07a0826182b6b59788c34b32bfa86fb711` |
+| Base Sepolia Address | `0xea998b642b469736a3f656328853203da3d92724` | `0x0b144e07a0826182b6b59788c34b32bfa86fb711` |
 | Verification | `seal[0:4] == 0xFFFFFFFF` | Groth16 BN254 cryptographic verification |
 | Security | Test-only (anyone can forge) | Cryptographically secure |
 | vlayer Compatibility | Accepts current dev-mode seals | Will accept future production seals |
 | Gas Cost | ~3,000 gas | ~300,000 gas (pairing operations) |
 | Use Case | Development / hackathon | Production |
 
-### 4.5 VeriCallRegistryV3 Architecture
+### 4.5 VeriCallRegistry Architecture (V4, Current)
+
+> See §3.7 for the contract design overview and phase plan. This section provides the detailed internal architecture.
 
 Changes from V2:
 1. **`callerHash` removed** from `CallRecord` and events — no phone number hash on-chain (privacy)
@@ -1141,7 +1161,7 @@ Changes from V2:
 8. **5-arg `registerCallDecision`** — `(callId, decision, reason, zkProofSeal, journalDataAbi)` only
 
 ```
-VeriCallRegistryV3
+VeriCallRegistryV4
 │
 ├── State (immutable)
 │   ├── verifier: IRiscZeroVerifier     ← Injected via constructor
@@ -1339,13 +1359,13 @@ struct CallRecord {
   Duration: 30–120 seconds
 
 ═══════════════════════════════════════════════════════════════════════
- Step 5: On-Chain Registration + ZK Verification (VeriCallRegistryV3)
+ Step 5: On-Chain Registration + ZK Verification (VeriCallRegistryV4)
 ═══════════════════════════════════════════════════════════════════════
 
   pipeline.ts: submitDecisionOnChain({...})
 
   TX construction (viem):
-    to:       VeriCallRegistryV3 (0x4395cf02b8d343aae958bda7ac6ed71fbd4abd48)
+    to:       VeriCallRegistryV4 (0x9a6015c6a0f13a816174995137e8a57a71250b81)
     function: registerCallDecision(
       callId:          keccak256("vericall_CA1234..._1738900000"),
       decision:        2 (BLOCK),
@@ -1531,14 +1551,15 @@ When vlayer starts returning production Groth16 proofs:
    will be on different contracts (V3-Mock / V3-Prod)
 ```
 
-### 4.8 File Structure (V3 Additions)
+### 4.8 File Structure (V4 Current)
 
 ```
 contracts/
 ├── VeriCallRegistry.sol              # V1 (Phase 1, 0xe454ca...)
 ├── VeriCallRegistryV2.sol            # V2 (Phase 2, 0x656ae7...)
-├── VeriCallRegistryV3.sol            # V3 (Phase 3, 0x4395cf...) ← CURRENT
-├── RiscZeroMockVerifier.sol          # Mock Verifier (0x330147...)
+├── VeriCallRegistryV3.sol            # V3 (Phase 3, 0x4395cf...)
+├── VeriCallRegistryV4.sol            # V4 (Phase 4, 0x9a6015c...) ← CURRENT
+├── RiscZeroMockVerifier.sol          # Mock Verifier (0xea998b...)
 ├── interfaces/
 │   └── IRiscZeroVerifier.sol         # RISC Zero standard interface
 ├── deployment.json                   # Deployment info (Single Source of Truth)
@@ -1549,14 +1570,19 @@ contracts/
     └── RiscZeroMockVerifier.sol/
 
 scripts/
-├── check-registry.ts                 # CLI inspector (V1/V2/V3 compatible)
+├── check-registry.ts                 # CLI inspector (V1–V4 compatible)
 ├── deploy-v2.ts                      # V2 deploy script (historical)
-└── deploy-v3.ts                      # V3 deploy script (with auto-sync)
+├── deploy-v4.ts                      # V4 deploy script (current, with auto-sync)
+├── setup-github-secrets.sh           # GitHub Secrets setup for CI/CD
+├── test-gemini.ts                    # Gemini AI integration test
+├── test-integration.ts               # End-to-end integration test
+├── test-stt.ts                       # Speech-to-Text test
+└── test-tts.ts                       # Text-to-Speech test
 
 lib/witness/
-├── abi.ts                            # V3 ABI (updated)
-├── on-chain.ts                       # On-chain operations (V3: 5-arg registerCallDecision)
-├── pipeline.ts                       # Pipeline (V3: no callerPhone/sourceUrl passed)
+├── abi.ts                            # V4 ABI (current)
+├── on-chain.ts                       # On-chain operations (V4: 5-arg registerCallDecision)
+├── pipeline.ts                       # Pipeline (V4: 5-field JMESPath, sourceCodeCommit)
 ├── vlayer-api.ts                     # vlayer API client (no changes)
-└── decision-store.ts                 # Cloud SQL store (no changes)
+└── decision-store.ts                 # Cloud SQL store (sourceCodeCommit + systemPromptHash)
 ```

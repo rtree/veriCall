@@ -25,114 +25,47 @@ Spam, robocalls, and impersonation fraud have made people hesitant to pick up un
 
 - 🇺🇸 **"Grandparent Scams"** — USA: phone fraud costs billions annually
 - 🇪🇺 **"Impersonation Scams"** — Europe: AI-generated voice fraud is emerging
-- 🇯🇵 **"オレオレ詐欺"** — Japan: a decades-old problem now amplified by voice AI
+- 🇯🇵 **"It's me Scam (OreOre オレオレ詐欺)"** — Japan: a decades-old problem now amplified by voice AI
 
 The phone itself is not the problem — **the lack of verifiable trust is**. When you can't confirm who's really calling or what really happened on a call, the phone becomes less useful for everyone.
 
 ## 🛡️ The Solution: A Mathematical Gatekeeper
 
-VeriCall puts a wall of logic — without emotions — in front of every call.
+VeriCall puts a wall of logic — without emotions — in front of every call. The AI answers first, screens with fixed rules, seals the decision on-chain, and **nobody can rewrite the story afterward**.
 
-### 1. 🤖 AI Agent Answers First
+📞 Call → 🤖 AI → ⚖️ Decision → 🔐 TLSNotary → 🧮 ZK Proof → ⛓️ On-Chain
 
-The AI answers all calls before they reach your family. It has no emotions. Even if a scammer cries, screams, or fabricates an emergency — the AI stays calm and checks **facts** and **identity**.
+### Step 1: 🤖 AI Screens the Call
 
-### 2. 📋 Strict Rules, No Exceptions
+A real phone call comes in via Twilio. The AI (Gemini 2.5 Flash) answers before it reaches your family — no emotions, no exceptions. Even if a scammer cries, screams, or fabricates an emergency, the AI stays calm and checks **facts** and **identity** using **fixed screening rules** embedded in [public source code](https://github.com/rtree/veriCall). It decides: **BLOCK** (spam alert sent to you) or **RECORD** (call connected or email notification).
 
-The AI follows **fixed screening rules**. It never skips verification even if the voice sounds like your family. The rules are embedded in the source code — public, auditable, unchangeable per-caller.
+### Step 2: 🔐 Web Proof (TLSNotary)
 
-### 3. ⚡ Spam or Important?
+[vlayer](https://vlayer.xyz)'s Web Prover fetches the Decision API response using TLSNotary — a third-party Notary joins the TLS session via MPC, never sees the plaintext, but cryptographically attests that VeriCall's server genuinely returned this JSON. The response contains decision **Input**, **Output**, and **Logic** (source code commit) — all attested in a single proof.
 
-- **SPAM** → The AI blocks the call immediately and sends a **Spam Alert** to you.
-- **IMPORTANT** → The AI connects the call to you or sends an email notification right away.
+### Step 3: 🧮 ZK Proof (RISC Zero)
 
-### 4. 🔐 Proof on Chain (ZK Proof)
+vlayer's ZK Prover compresses the Web Proof into a succinct RISC Zero proof. JMESPath extraction pulls 5 fields — `decision`, `reason`, `systemPromptHash`, `transcriptHash`, `sourceCodeCommit` — into a 10-field ABI-encoded journal. Input + Output + Logic are sealed together.
 
-The AI's decision is anchored **on-chain** using [vlayer](https://vlayer.xyz) Web Proofs and ZK Proofs. VeriCall doesn't claim to prove the AI is fair — instead, it creates **non-repudiation**: the operator cannot rewrite, deny, or secretly alter a decision after the fact. Every decision, every reasoning, every ruleset hash is committed to an immutable record on Base Sepolia — with **Decision–Journal Binding** that makes proof-and-decision inseparable.
+### Step 4: ⛓️ On-Chain Record
+
+The proof and journal are submitted to `VeriCallRegistry` on Base Sepolia. The contract validates **every field** before storing — 15 on-chain checks including **Decision–Journal Binding** (💡 core technical contribution: the submitted decision must `keccak256`-match the proven decision — you can't submit a valid proof with "RECORD" and store "BLOCK"). → [Full contract checks](DESIGN.md#37-on-chain-verification--contract-design)
 
 > 🔍 **You don't need to take VeriCall's word for it.** Every on-chain record — decision, reasoning, ruleset hash, transcript hash, source code commit — is publicly readable. Verify [from your browser](https://vericall-kkz6k4jema-uc.a.run.app/verify) or [from the CLI](scripts/verify.ts). No API keys, no VeriCall servers required.
-
-## How It Works
-
-### Step 1: AI Screens the Call
-
-A real phone call comes in via Twilio. The AI (Gemini 2.5 Flash) listens via streaming speech-to-text, evaluates the caller's intent, and decides: **BLOCK** or **RECORD**. The decision, reasoning, transcript hash, and ruleset hash are stored in a Decision API endpoint.
-
-### Step 2: Web Proof (TLSNotary)
-
-vlayer's Web Prover fetches the Decision API response using TLSNotary — a third-party Notary joins the TLS session via MPC, never sees the plaintext, but cryptographically attests that VeriCall's server genuinely returned this JSON.
-
-### Step 3: ZK Proof (RISC Zero)
-
-vlayer's ZK Prover compresses the Web Proof into a succinct RISC Zero proof. JMESPath extraction pulls 5 fields — `decision`, `reason`, `systemPromptHash`, `transcriptHash`, `sourceCodeCommit` — into a 10-field ABI-encoded journal.
-
-### Step 4: On-Chain Record
-
-The proof and journal are submitted to `VeriCallRegistry` on Base Sepolia. The contract validates **every field** before storing — 15 on-chain checks including Decision–Journal Binding. → [Deep dive](#on-chain-verification)
-
-## What Gets Proven — Non-Repudiation Through ZK
-
-Every call produces a ZK proof containing these journal fields. Once on-chain, the operator **cannot** alter, deny, or selectively disclose any of them.
-
-| Role | What's Non-Repudiable | ZK Journal Parameter | Mechanism |
-|---|---|---|---|
-| **Output** | **The decision** | `provenDecision` (`BLOCK` / `RECORD`) | TLSNotary attests server response → ZK extracts → contract binds via `keccak256` match |
-| **Output** | **The reasoning** | `provenReason` (full text) | TLSNotary attests server response → ZK extracts → contract binds via `keccak256` match |
-| **Logic** | **AI screening rules** | `provenSystemPromptHash` (SHA-256) | TLSNotary attests server response → ZK extracts → contract requires non-empty. Read the [source code](lib/voice-ai/gemini.ts#L124) at the proven commit → hash → compare. |
-| **Input** | **Conversation evaluated** | `provenTranscriptHash` (SHA-256) | TLSNotary attests server response → ZK extracts → contract requires non-empty. Locks which conversation produced this decision. |
-| **Logic** | **Source code version** | `provenSourceCodeCommit` (git SHA) | TLSNotary attests server response → ZK extracts → contract requires non-empty. [Inspect on GitHub](https://github.com/rtree/veriCall). |
-| **Meta** | **When it happened** | `timestamp` | TLS session timestamp — set by TLSNotary during MPC, not by the server. Cannot be forged by client or server. |
-| **Meta** | **Proof targets VeriCall** | `url` + `method` + `notaryKeyFingerprint` | Contract validates URL prefix, HTTP method, and Notary identity. No proof reuse from other APIs. |
-
-> **Privacy**: Phone numbers never go on-chain. Transcript is hashed. AI reasoning is in plaintext — intentional, because accountability requires public auditability.
-
-**In plain language**: After a call, VeriCall's decision is sealed in a ZK proof and written to the blockchain. From that point, VeriCall cannot claim it made a different decision, applied different rules, evaluated a different conversation, or ran different code. **The story is locked.**
-
-## Trust Model
-
-The table above shows that **Input, Logic, and Output are all non-repudiable**:
-
-- ✅ **Input** — `transcriptHash` seals which conversation was evaluated
-- ✅ **Output** — `decision` and `reason` are bound via `keccak256` — inseparable from the proof
-- ✅ **Logic** — `sourceCodeCommit` points to [public code on GitHub](https://github.com/rtree/veriCall). Anyone can read the [AI rules](lib/voice-ai/gemini.ts#L124), the [hash computation](lib/witness/decision-store.ts#L46), and the [API response format](app/api/witness/decision/%5BcallSid%5D/route.ts#L30) at the proven commit. If on-chain hashes don't match → **the server lied about its commit**.
-
-**What remains — two honest gaps:**
-
-| Gap | What It Means | How It Gets Closed |
-|-----|---------------|--------------------|
-| **Binary ≠ Commit** | The deployed binary might not exactly match the proven commit | Reproducible builds or TEE — if the binary differs, behavior diverges from public code (a detectable inconsistency) |
-| **AI Inference** | TLSNotary proves what the *server returned*, not what the *model computed* internally | Google Vertex AI API attestation or TEE — proving the model itself returned this output |
-
-### 🔗 How Source Code Gets Proven
-
-The git commit SHA is embedded inside the same Decision API response that TLSNotary already attests — no separate GitHub API call, zero rate limit concerns.
-
-1. At **build time**, the server captures its git commit (`git rev-parse HEAD`)
-2. The **Decision API** embeds this commit in every JSON response alongside the decision
-3. **TLSNotary** attests the entire response in a single proof — decision, hashes, AND commit SHA
-4. The **contract** stores `provenSourceCodeCommit` on-chain and enforces non-empty
-5. **Anyone** can inspect the exact code at [`github.com/rtree/veriCall/tree/<commit>`](https://github.com/rtree/veriCall)
-
-The result: every on-chain record points to a specific, public, auditable snapshot of VeriCall's source code. If the operator lies about the commit, the code won't match the observed behavior — a publicly detectable lie.
-
-```
-  Trust Evolution:
-
-  Today (no VeriCall)         VeriCall (now)                   Future
-  ┌──────────────────┐        ┌──────────────────────────┐     ┌──────────────────────────┐
-  │ Trust the         │        │ Trust server attestation  │     │ Trust Google API          │
-  │ operator entirely │ ──→    │ + chain immutability      │ ──→ │ attestation + TEE         │
-  │                   │        │ + auditable source code   │     │ (full inference proof)    │
-  │ "Just trust us"   │        │ "Operator can't rewrite   │     │ "Even the server can't    │
-  │                   │        │  history"                 │     │  lie about AI output"     │
-  └──────────────────┘        └──────────────────────────┘     └──────────────────────────┘
-```
-
-**Narrowing the trust gap (future):** Attesting the Vertex AI API response directly (proving *Google's model* returned this decision) or running the server inside a TEE. Both would shift trust from "VeriCall's server" to independently verifiable infrastructure.
 
 ## Architecture
 
 ```
+                              💻 GitHub (Public Repository)
+                              github.com/rtree/veriCall
+                              ┌─────────────────────────────┐
+                              │ gemini.ts    → screening rules│
+                              │ decision-store.ts → hashing  │
+                              │ route.ts     → API response  │
+                              └──────────────┬──────────────┘
+                                             │ git commit SHA
+                                             │ embedded at build time
+                                             ▼
   📞 Caller ──→ Twilio ──→ WebSocket ──→ VeriCall Server (Cloud Run)
                                               │
                               ┌────────────────┴────────────────┐
@@ -147,15 +80,14 @@ The result: every on-chain record points to a specific, public, auditable snapsh
                     │                          │
                     ▼                          ▼
            📧 Email Notify          Decision API (HTTPS)
-                                    Returns JSON:
                                     ┌─────────────────────────┐
                                     │ decision     (Output)   │
                                     │ reason       (Output)   │
                                     │ transcriptHash (Input)  │
                                     │ promptHash   (Logic)    │
-                                    │ commitSHA    (Logic)    │
-                                    └────────────┬────────────┘
-                                                 │
+                                    │ commitSHA    (Logic) ───┼──→ GitHub Attestation:
+                                    └────────────┬────────────┘    commit links to
+                                                 │                 auditable public code
                                     TLSNotary attests entire
                                     response in single proof
                                                  │
@@ -174,75 +106,64 @@ The result: every on-chain record points to a specific, public, auditable snapsh
                                       VeriCallRegistry
                                     15 on-chain validations
                                                  │
-                    ┌────────────────────────────┤
-                    │                            │
-                    ▼                            ▼
-            🔍 Anyone                  💻 GitHub (Public)
-            verifies on-chain          github.com/rtree/veriCall
-            via /verify                Read Logic at proven commit
+                                                 ▼
+                                         🔍 Anyone
+                                    verifies on-chain via /verify
+                                    + reads Logic on GitHub at
+                                      proven commit
 ```
 
-> ⚠️ **Hackathon Deployment**: The ZK seal verifier uses `MockVerifier` — vlayer's ZK Prover has not yet shipped production Groth16 proofs. **All other 14 on-chain checks are real and enforced**: journal decode, notary validation, URL binding, decision–journal `keccak256` matching, hash presence, source code commit. The contract is production-ready — swap `MockVerifier` → `RiscZeroVerifierRouter` with zero code changes. → [Details](DESIGN.md#39-verifier-honesty-mockverifier-vs-production)
+## What Gets Proven — Non-Repudiation Through ZK
 
-## On-Chain Verification
+Every call produces a ZK proof containing these journal fields. Once on-chain, the operator **cannot** alter, deny, or selectively disclose any of them.
 
-> 💡 **Core Technical Contribution: Decision–Journal Binding.** Most Web Proof projects store attested data. VeriCall goes further — the contract *forces* the submitted decision to match the proven decision via `keccak256`. You can't submit a valid ZK proof with decision "RECORD" and store "BLOCK". The proof and the record are cryptographically inseparable.
+| Part | What's Non-Repudiable | ZK Journal Parameter | Mechanism |
+|---|---|---|---|
+| **Input** | **Conversation** | `provenTranscriptHash` (SHA-256) | TLSNotary attests server response → ZK extracts → contract requires non-empty. Locks which conversation produced this decision. |
+| **Input** | **When it happened** | `timestamp` | TLS session timestamp — set by TLSNotary during MPC, not by the server. Cannot be forged by client or server. |
+| **Output** | **Decision** | `provenDecision` (`BLOCK` / `RECORD`) | TLSNotary attests server response → ZK extracts → contract binds via `keccak256` match |
+| **Output** | **Reasoning** | `provenReason` (full text) | TLSNotary attests server response → ZK extracts → contract binds via `keccak256` match |
+| **Logic** | **Screening rules** | `provenSystemPromptHash` (SHA-256) | TLSNotary attests server response → ZK extracts → contract requires non-empty. Read the [source code](lib/voice-ai/gemini.ts#L124) at the proven commit → hash → compare. |
+| **Logic** | **Source code ** | `provenSourceCodeCommit` (git SHA) | TLSNotary attests server response → ZK extracts → contract requires non-empty. [Inspect on GitHub](https://github.com/rtree/veriCall). |
+| | **Privacy** | | Phone numbers never go on-chain. Transcript is hashed. Reasoning is plaintext — intentional, because accountability requires public auditability. |
 
-The contract doesn't just store data — it validates every field before accepting a record.
+### 🔗 How Logic Gets Proven — GitHub Code Attestation
 
-### 10-Field Journal
+The table shows *what* is non-repudiable. Here's *how* the Logic fields get locked:
 
-The ZK proof produces an ABI-encoded journal. All 10 fields are decoded and validated on-chain:
+1. At **build time**, the server captures its git commit (`git rev-parse HEAD`)
+2. The **Decision API** embeds the commit SHA + system prompt hash in every JSON response
+3. **TLSNotary** attests the entire response in a single proof — decision, hashes, AND commit SHA
+4. The **contract** stores `provenSourceCodeCommit` and `provenSystemPromptHash` on-chain (enforces non-empty)
+5. **Anyone** can inspect the exact code at [`github.com/rtree/veriCall/tree/<commit>`](https://github.com/rtree/veriCall) — read the [screening rules](lib/voice-ai/gemini.ts#L124), recompute the prompt hash, and compare. If it doesn't match → **the server lied about its commit**
 
-| Field | What It Proves | How It's Verified |
-|-------|----------------|-------------------|
-| `notaryKeyFingerprint` | Which TLSNotary signed the proof | Contract checks against `EXPECTED_NOTARY_KEY_FP` immutable constant |
-| `method` | HTTP method was `GET` | Contract checks `keccak256(method) == keccak256("GET")` |
-| `url` | Points to VeriCall's Decision API | Contract checks URL starts with `expectedUrlPrefix` (byte-by-byte) |
-| `timestamp` | TLS session time (not self-reported) | Embedded by TLSNotary during MPC — neither client nor server can forge |
-| `queriesHash` | JMESPath extraction config is correct | Contract checks against `expectedQueriesHash` constant |
-| `provenDecision` | `"BLOCK"` / `"RECORD"` — from the API response | Contract binds to submitted `decision` via `keccak256` match (Steps I–J) |
-| `provenReason` | AI reasoning — from the API response | Contract binds to submitted `reason` via `keccak256` match (Steps I–J) |
-| `provenSystemPromptHash` | SHA-256 of AI ruleset — from the response | Contract requires non-empty; anyone can hash published rules and compare |
-| `provenTranscriptHash` | SHA-256 of conversation — from the API response | Contract requires non-empty; commits to which conversation was evaluated |
-| `provenSourceCodeCommit` | Git commit SHA — from the API response | Contract requires non-empty; links to auditable code on GitHub |
+## Trust Model
 
-### What the Contract Checks
+The table above shows that **Input, Logic, and Output are all non-repudiable**:
 
-```
-registerCallDecision(callId, decision, reason, seal, journal)
-│
-├─ A. ZK proof — verifier.verify(seal, imageId, sha256(journal))
-├─ B. Decode journal → 10 fields
-├─ C. Notary fingerprint == expected constant
-├─ D. HTTP method == "GET"
-├─ E. queriesHash == expected hash
-├─ F. URL starts with expected prefix (byte-by-byte)
-├─ G. systemPromptHash is non-empty
-├─ H. transcriptHash is non-empty
-├─ I. sourceCodeCommit is non-empty
-├─ J. decision matches provenDecision (keccak256)
-├─ K. reason matches provenReason (keccak256)
-├─ L. callId not already registered (duplicate prevention)
-└─ M. Store record + emit CallDecisionRecorded event
-```
+- ✅ **Input** — `transcriptHash` seals which conversation was evaluated
+- ✅ **Output** — `decision` and `reason` are bound via `keccak256` — inseparable from the proof
+- ✅ **Logic** — `sourceCodeCommit` points to [public code on GitHub](https://github.com/rtree/veriCall). Anyone can read the [AI rules](lib/voice-ai/gemini.ts#L124), the [hash computation](lib/witness/decision-store.ts#L46), and the [API response format](app/api/witness/decision/%5BcallSid%5D/route.ts#L30) at the proven commit. If on-chain hashes don't match → **the server lied about its commit**.
 
-### Decision–Journal Binding (Steps I–J)
+**What remains — two honest gaps:**
 
-The decision and reason are stored as typed fields (for queryability) but also exist inside the ZK journal as proven strings. The contract checks both via `keccak256` — if anyone submits a valid proof with a different decision label, the transaction reverts.
-
-### Upgrade Path
-
-The `verifier` is an `IRiscZeroVerifier` interface injected via constructor:
+| Gap | What It Means | How It Gets Closed |
+|-----|---------------|--------------------|
+| **Binary ≠ Commit** | The deployed binary might not exactly match the proven commit | Reproducible builds or TEE — if the binary differs, behavior diverges from public code (a detectable inconsistency) |
+| **AI Inference** | TLSNotary proves what the *server returned*, not what the *model computed* internally | Google Vertex AI API attestation or TEE — proving the model itself returned this output |
 
 ```
-Current:    VeriCallRegistry( MockVerifier,   imageId, ... )
-Production: VeriCallRegistry( VerifierRouter, imageId, ... )
+  Trust Evolution:
+
+  Today (no VeriCall)         VeriCall (now)                   Future
+  ┌──────────────────┐        ┌──────────────────────────┐     ┌──────────────────────────┐
+  │ Trust the         │        │ Trust server attestation  │     │ Trust Google API          │
+  │ operator entirely │ ──→    │ + chain immutability      │ ──→ │ attestation + TEE         │
+  │                   │        │ + auditable source code   │     │ (full inference proof)    │
+  │ "Just trust us"   │        │ "Operator can't rewrite   │     │ "Even the server can't    │
+  │                   │        │  history"                 │     │  lie about AI output"     │
+  └──────────────────┘        └──────────────────────────┘     └──────────────────────────┘
 ```
-
-Zero code changes needed. [RISC Zero's verifier infrastructure is production-ready](https://github.com/boundless-xyz/boundless-foundry-template). The remaining bottleneck is vlayer's ZK Prover transitioning from dev-mode seals to real Groth16 proofs. → [Details](DESIGN.md#39-verifier-honesty-mockverifier-vs-production)
-
-Anyone can call `getProvenData(callId)` to decode all 10 journal fields directly from the contract. No API keys required.
 
 ## Try It Yourself
 
@@ -275,6 +196,8 @@ This pattern — **committing an AI decision, its inputs, and its rules to an im
 | 🛡️ Content Moderation | AI moderation committed on-chain |
 | ⚖️ Insurance Claims | AI claim decision committed on-chain |
 
+The proof pipeline is domain-agnostic; only the screening rules change.
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -283,28 +206,43 @@ This pattern — **committing an AI decision, its inputs, and its rules to an im
 | **AI** | Vertex AI Gemini 2.5 Flash |
 | **STT / TTS** | Google Cloud Speech / Text-to-Speech |
 | **Server** | Next.js 16 + custom WebSocket server on Cloud Run |
+| **Database** | Cloud SQL (PostgreSQL 15) · IAM auth — stores decisions for Web Prover access |
+| **Email** | SendGrid |
+| **Logic Transparency** | [GitHub public repository](https://github.com/rtree/veriCall) — `sourceCodeCommit` embedded at build time, auditable by anyone |
 | **Web Proofs** | vlayer Web Prover (TLSNotary / MPC) |
 | **ZK Proofs** | vlayer ZK Prover (RISC Zero) |
 | **Chain** | Base Sepolia · viem · VeriCallRegistry (Solidity / Foundry) |
-| **Email** | SendGrid |
+| **CI/CD** | GitHub Actions · Workload Identity Federation · `git rev-parse HEAD` → build arg |
 
-## Getting Started
-
-```bash
-pnpm install
-cp .env.example .env.local   # configure credentials
-pnpm dev                      # dev server with WebSocket
-```
-
-→ [Deployment guide](docs/DEPLOY.md) · [Full project structure & design](DESIGN.md)
+→ [Getting started & deployment](docs/DEPLOY.md) · [Full project structure & design](DESIGN.md)
 
 ## Status & Roadmap
 
-**Working today**: Real-time AI call screening → TLSNotary Web Proof → RISC Zero ZK Proof → on-chain journal validation (10-field decode, decision–journal binding, GitHub Code Attestation) → independent verification via [browser](https://vericall-kkz6k4jema-uc.a.run.app/verify) and [CLI](scripts/verify.ts). Deployed on Cloud Run + Base Sepolia.
+**✅ Working today** — the full pipeline is live and verifiable:
 
-**Waiting on upstream**: Production Groth16 verification (vlayer ZK Prover) · Solidity SDK migration (vlayer custom hooks). No VeriCall code changes needed for either. → [Details](DESIGN.md#39-verifier-honesty-mockverifier-vs-production)
+- Real phone call → AI screening (Gemini 2.5 Flash) → BLOCK / RECORD decision
+- TLSNotary Web Proof → RISC Zero ZK Proof → 10-field journal with Input + Output + Logic
+- On-chain validation (15 checks, Decision–Journal Binding) on Base Sepolia
+- `sourceCodeCommit` on-chain → [public GitHub repo](https://github.com/rtree/veriCall) → anyone audits the Logic
+- Independent verification via [browser](https://vericall-kkz6k4jema-uc.a.run.app/verify) and [CLI](scripts/verify.ts) — no API keys, no VeriCall servers
 
-**Future**: Cross-chain verification · Caller-initiated proofs · Multi-tenant support.
+**🔮 Closing the Trust Gaps** — from the [Trust Model](#trust-model):
+
+| Gap | Solution | Effect |
+|-----|----------|--------|
+| **ZK Seal Verification** | vlayer production Groth16 proofs (upstream) | Currently `MockVerifier` — all other 14 checks are real. Swap to `RiscZeroVerifierRouter` with zero code changes → [Details](DESIGN.md#39-verifier-honesty-mockverifier-vs-production) |
+| **Binary ≠ Commit** | TEE (Confidential Computing) or reproducible builds | Proves the running binary matches the proven commit — Logic becomes fully trustless |
+| **AI Inference** | Google Vertex AI API attestation or TEE | Proves the model itself returned this output — not just the server |
+
+When all three close → **Input, Output, AND Logic are mathematically proven end-to-end** (see Trust Evolution diagram above).
+
+**🏛️ Who Writes the Rules?** — today it's a single operator. On-chain `systemPromptHash` opens the door:
+
+| Model | How It Works |
+|-------|--------------|
+| **DAO Governance** | Token holders vote on screening rule updates — every version is auditable, no single operator can silently change logic |
+| **Public Authority** | Telecom regulators / consumer protection agencies publish certified rulesets — operators prove compliance via `systemPromptHash` match |
+| **Prediction Markets** | Stake on whether a rule change improves scam detection — market incentives replace committee debates |
 
 ## AI Attribution
 
@@ -313,8 +251,8 @@ This project was built with AI assistance (GitHub Copilot / Claude). Per ETHGlob
 | Area | How AI Was Used |
 |------|-----------------|
 | **Architecture & Research** | SDK documentation lookup (vlayer, RISC Zero, TLSNotary), API design patterns, ZK proof pipeline exploration |
-| **Documentation** | Human concept → detailed technical writing (README, DESIGN.md, inline comments) |
-| **Code Generation** | Human concept + specs → implementation (Solidity contracts, witness pipeline, verification CLI, web pages) |
+| **Documentation** | Human concept + core document → detailed technical writing (README, DESIGN.md, inline comments) |
+| **Code Generation** | Human concept + core code → implementation (Solidity contracts, witness pipeline, verification CLI, web pages) |
 | **Debugging** | Log analysis, error diagnosis, Gemini output format investigation |
 
 All architectural decisions, system design, and verification logic were human-directed. AI accelerated implementation and documentation — it did not independently design the proof pipeline or contract validation.

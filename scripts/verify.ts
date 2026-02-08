@@ -30,10 +30,10 @@ import { baseSepolia } from 'viem/chains';
 // ═══════════════════════════════════════════════════════════════
 
 const CONFIG = {
-  registry: '0x4395cf02b8d343aae958bda7ac6ed71fbd4abd48' as `0x${string}`,
-  mockVerifier: '0x33014731e74f0610aefa9318b3e6600d51fd905e' as `0x${string}`,
+  registry: '0x9a6015c6a0f13a816174995137e8a57a71250b81' as `0x${string}`,
+  mockVerifier: '0xea998b642b469736a3f656328853203da3d92724' as `0x${string}`,
   deployer: '0x485A974140923524a74B0D72aF117852F31B412D' as `0x${string}`,
-  deployBlock: 37362314n,
+  deployBlock: 37374494n,
   imageId: '0x6e251f4d993427d02a4199e1201f3b54462365d7c672a51be57f776d509b47eb',
   rpcUrl: 'https://sepolia.base.org',
   basescan: 'https://sepolia.basescan.org',
@@ -54,7 +54,7 @@ const REGISTRY_ABI = [
   { type: 'function', name: 'verifier', inputs: [], outputs: [{ name: '', type: 'address' }], stateMutability: 'view' },
   { type: 'function', name: 'callIds', inputs: [{ name: '', type: 'uint256' }], outputs: [{ name: '', type: 'bytes32' }], stateMutability: 'view' },
   { type: 'function', name: 'getRecord', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: '', type: 'tuple', components: [{ name: 'decision', type: 'uint8' }, { name: 'reason', type: 'string' }, { name: 'journalHash', type: 'bytes32' }, { name: 'zkProofSeal', type: 'bytes' }, { name: 'journalDataAbi', type: 'bytes' }, { name: 'sourceUrl', type: 'string' }, { name: 'timestamp', type: 'uint256' }, { name: 'submitter', type: 'address' }, { name: 'verified', type: 'bool' }] }], stateMutability: 'view' },
-  { type: 'function', name: 'getProvenData', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: 'notaryKeyFingerprint', type: 'bytes32' }, { name: 'method', type: 'string' }, { name: 'url', type: 'string' }, { name: 'proofTimestamp', type: 'uint256' }, { name: 'queriesHash', type: 'bytes32' }, { name: 'provenDecision', type: 'string' }, { name: 'provenReason', type: 'string' }, { name: 'provenSystemPromptHash', type: 'string' }, { name: 'provenTranscriptHash', type: 'string' }], stateMutability: 'view' },
+  { type: 'function', name: 'getProvenData', inputs: [{ name: 'callId', type: 'bytes32' }], outputs: [{ name: 'notaryKeyFingerprint', type: 'bytes32' }, { name: 'method', type: 'string' }, { name: 'url', type: 'string' }, { name: 'proofTimestamp', type: 'uint256' }, { name: 'queriesHash', type: 'bytes32' }, { name: 'provenDecision', type: 'string' }, { name: 'provenReason', type: 'string' }, { name: 'provenSystemPromptHash', type: 'string' }, { name: 'provenTranscriptHash', type: 'string' }, { name: 'provenSourceCodeCommit', type: 'string' }], stateMutability: 'view' },
   { type: 'function', name: 'verifyJournal', inputs: [{ name: 'callId', type: 'bytes32' }, { name: 'journalData', type: 'bytes' }], outputs: [{ name: '', type: 'bool' }], stateMutability: 'view' },
   { type: 'function', name: 'EXPECTED_NOTARY_KEY_FP', inputs: [], outputs: [{ name: '', type: 'bytes32' }], stateMutability: 'view' },
   { type: 'function', name: 'expectedQueriesHash', inputs: [], outputs: [{ name: '', type: 'bytes32' }], stateMutability: 'view' },
@@ -150,6 +150,7 @@ interface RecordVerification {
     provenReason: string;
     provenSystemPromptHash: string;
     provenTranscriptHash: string;
+    provenSourceCodeCommit: string;
     extractedData: string;
   };
   deepCheck?: {
@@ -511,6 +512,7 @@ async function verifyRecord(
     provenReason: '' as string,
     provenSystemPromptHash: '' as string,
     provenTranscriptHash: '' as string,
+    provenSourceCodeCommit: '' as string,
     extractedData: '' as string,  // reconstructed for backward compat
   };
   let provenDataValid = false;
@@ -529,6 +531,7 @@ async function verifyRecord(
       provenReason: pd[6] || '',
       provenSystemPromptHash: pd[7] || '',
       provenTranscriptHash: pd[8] || '',
+      provenSourceCodeCommit: pd[9] || '',
       extractedData: `${pd[5] || ''}|${pd[6] || ''}`,  // reconstructed summary
     };
     const notaryNonZero = provenData.notaryKeyFingerprint !== '0x' + '0'.repeat(64);
@@ -638,6 +641,7 @@ async function verifyRecord(
       provenReason: provenData.provenReason,
       provenSystemPromptHash: provenData.provenSystemPromptHash,
       provenTranscriptHash: provenData.provenTranscriptHash,
+      provenSourceCodeCommit: provenData.provenSourceCodeCommit,
       extractedData: provenData.extractedData,
     },
     deepCheck,
