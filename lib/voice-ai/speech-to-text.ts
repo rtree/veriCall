@@ -29,6 +29,8 @@ export class SpeechToText {
   private hasError = false;
   private isStarting = false;
   private pendingAudio: Buffer[] = [];
+  private errorCount = 0;
+  private static readonly MAX_RETRIES = 3;
 
   constructor(config: STTConfig = {}) {
     this.client = new SpeechClient();
@@ -107,7 +109,22 @@ export class SpeechToText {
       console.error('[STT] Stream error:', error.message);
       this.isStreamActive = false;
       this.isStarting = false;
-      this.hasError = true;
+
+      // Clean up the errored stream
+      if (this.recognizeStream) {
+        try { this.recognizeStream.end(); } catch { /* ignore */ }
+        this.recognizeStream = null;
+      }
+
+      this.errorCount++;
+      if (this.errorCount > SpeechToText.MAX_RETRIES) {
+        console.error(`[STT] Max retries exceeded (${this.errorCount}), permanently disabled`);
+        this.hasError = true;
+      } else {
+        console.log(`[STT] Will restart on next audio (attempt ${this.errorCount}/${SpeechToText.MAX_RETRIES})`);
+        // Stream will auto-restart on next writeAudio() call
+        // because isStreamActive=false and hasError=false
+      }
     });
 
     this.recognizeStream.on('end', () => {
