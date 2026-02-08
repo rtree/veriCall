@@ -31,10 +31,10 @@ function txLink(tx: string) {
 // ═══════════════════════════════════════════════════════════════
 
 const DECISION_COLORS: Record<number, string> = {
-  0: '#888', 1: '#22c55e', 2: '#ef4444', 3: '#eab308',
+  0: '#888', 1: '#06b6d4', 2: '#f97316', 3: '#eab308',
 };
 const DECISION_EMOJI: Record<number, string> = {
-  0: '❓', 1: '✅', 2: '🚫', 3: '📝',
+  0: '❓', 1: '✅', 2: '🛡️', 3: '📝',
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -94,34 +94,58 @@ export default function VerifyPage() {
         )}
       </section>
 
-      {/* ─── Result Banner ──────────────────────────────── */}
-      {state.phase === 'done' && (
-        <div style={{
-          ...styles.resultBanner,
-          borderColor: allPassed ? '#22c55e' : '#ef4444',
-          background: allPassed ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.06)',
-        }}>
-          <div style={{ fontSize: '2.5rem' }}>{allPassed ? '✅' : '❌'}</div>
-          <div>
-            <div style={{
-              fontSize: '1.4rem', fontWeight: 700,
-              color: allPassed ? '#22c55e' : '#ef4444',
-            }}>
-              {allPassed ? 'ALL CHECKS PASSED' : 'SOME CHECKS FAILED'}
+      {/* ─── Result Banner — per-record summary ──────── */}
+      {state.phase === 'done' && (() => {
+        const contractOk = state.contract?.checks.every(c => c.status === 'pass') ?? true;
+        const contractActive = state.contract?.checks.filter(c => c.status !== 'skip').length ?? 0;
+        const contractPassed = state.contract?.checks.filter(c => c.status === 'pass').length ?? 0;
+        const recordSummaries = state.records.map(r => {
+          const active = r.checks.filter(c => c.status !== 'skip');
+          return { index: r.index, decision: r.decision, ok: active.every(c => c.status === 'pass'), passed: active.filter(c => c.status === 'pass').length, total: active.length };
+        });
+        const failedRecords = recordSummaries.filter(r => !r.ok);
+        return (
+          <div style={{
+            ...styles.resultBanner,
+            borderColor: allPassed ? '#22c55e' : failedRecords.length > 0 ? '#ef4444' : '#22c55e',
+            background: allPassed ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.04)',
+          }}>
+            {/* Overall headline */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', width: '100%' }}>
+              <div style={{ fontSize: '2rem' }}>{allPassed ? '✅' : '⚠️'}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '1.2rem', fontWeight: 700, color: allPassed ? '#22c55e' : '#eab308' }}>
+                  {allPassed ? 'ALL RECORDS VERIFIED' : `${failedRecords.length} of ${recordSummaries.length} record${recordSummaries.length > 1 ? 's' : ''} with issues`}
+                </div>
+                <div style={{ color: '#888', fontSize: '0.8rem', marginTop: '0.2rem' }}>
+                  {state.passedChecks}/{state.totalChecks} checks on {CONFIG.network}
+                </div>
+              </div>
             </div>
-            <div style={{ color: '#888', fontSize: '0.9rem', marginTop: '0.25rem' }}>
-              {state.passedChecks}/{state.totalChecks} checks verified on {CONFIG.network}
+            {/* Per-item summary pills */}
+            <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: '0.4rem', width: '100%', marginTop: '0.5rem' }}>
+              <span style={{
+                padding: '0.25rem 0.65rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600,
+                background: contractOk ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
+                color: contractOk ? '#22c55e' : '#ef4444',
+                border: `1px solid ${contractOk ? '#22c55e30' : '#ef444430'}`,
+              }}>
+                {contractOk ? '✓' : '✗'} Contract {contractPassed}/{contractActive}
+              </span>
+              {recordSummaries.map(r => (
+                <span key={r.index} style={{
+                  padding: '0.25rem 0.65rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600,
+                  background: r.ok ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
+                  color: r.ok ? '#22c55e' : '#ef4444',
+                  border: `1px solid ${r.ok ? '#22c55e30' : '#ef444430'}`,
+                }}>
+                  {r.ok ? '✓' : '✗'} #{r.index} {r.passed}/{r.total}
+                </span>
+              ))}
             </div>
           </div>
-          <div style={styles.progressBarOuter}>
-            <div style={{
-              ...styles.progressBarInner,
-              width: `${(state.passedChecks / state.totalChecks) * 100}%`,
-              background: allPassed ? '#22c55e' : '#ef4444',
-            }} />
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ─── Loading State ──────────────────────────────── */}
       {(state.phase === 'contract' || state.phase === 'records') && (
@@ -159,8 +183,8 @@ export default function VerifyPage() {
             <div style={styles.contractMeta}>
               <span><span style={{ color: '#888' }}>Records</span> <strong>{state.contract.stats.total}</strong></span>
               <span style={{ color: '#1a1a1a' }}>|</span>
-              <span style={{ color: '#22c55e' }}>{state.contract.stats.accepted} accepted</span>
-              <span style={{ color: '#ef4444' }}>{state.contract.stats.blocked} blocked</span>
+              <span style={{ color: '#06b6d4' }}>{state.contract.stats.accepted} accepted</span>
+              <span style={{ color: '#f97316' }}>{state.contract.stats.blocked} blocked</span>
               <span style={{ color: '#eab308' }}>{state.contract.stats.recorded} recorded</span>
             </div>
             <div style={styles.contractChecksInline}>
@@ -196,7 +220,7 @@ export default function VerifyPage() {
             <div style={styles.recordList}>
               {sorted.map(rec => {
                 const isSelected = selectedIdx === rec.index;
-                const allOk = rec.checks.every(c => c.status === 'pass');
+                const allOk = rec.checks.every(c => c.status === 'pass' || c.status === 'skip');
                 const decColor = DECISION_COLORS[rec.decision] || '#888';
                 return (
                   <div
@@ -426,10 +450,10 @@ function RecordDetail({ record }: { record: RecordData }) {
                 ))}
               </div>
               <span style={{
-                color: c.status === 'pass' ? '#22c55e' : '#ef4444',
+                color: c.status === 'pass' ? '#22c55e' : c.status === 'skip' ? '#888' : '#ef4444',
                 fontWeight: 600, flexShrink: 0,
               }}>
-                {c.status === 'pass' ? '✓' : '✗'}
+                {c.status === 'pass' ? '✓' : c.status === 'skip' ? '—' : '✗'}
               </span>
             </div>
           </div>

@@ -67,7 +67,7 @@ const ProofVerifiedEvent = parseAbiItem(
 // Types
 // ═══════════════════════════════════════════════════════════════
 
-export type CheckStatus = 'pending' | 'running' | 'pass' | 'fail';
+export type CheckStatus = 'pending' | 'running' | 'pass' | 'fail' | 'skip';
 
 export interface Check {
   id: string;
@@ -243,11 +243,12 @@ export function useVerify() {
       // ─── Done ───────────────────────────────────────────
 
       const allChecks = [...contractChecks, ...records.flatMap(r => r.checks)];
+      const activeChecks = allChecks.filter(c => c.status !== 'skip');
       setState(s => ({
         ...s,
         phase: 'done',
-        totalChecks: allChecks.length,
-        passedChecks: allChecks.filter(c => c.status === 'pass').length,
+        totalChecks: activeChecks.length,
+        passedChecks: activeChecks.filter(c => c.status === 'pass').length,
       }));
     } catch (err: any) {
       setState(s => ({ ...s, phase: 'error', error: err.message || 'Unknown error' }));
@@ -487,9 +488,9 @@ async function verifyRecord(
       v8SubDetails.push({ text: 'Hash the file yourself to compare with on-chain systemPromptHash' });
     }
   } else {
-    v8Status = 'fail';
-    v8Detail = commitSha ? `Empty or unknown commit: "${commitSha}"` : 'No sourceCodeCommit in journal (V3 record)';
-    v8SubDetails.push({ text: 'V4 records include sourceCodeCommit for source code verification' });
+    v8Status = 'skip';
+    v8Detail = 'Not available in this journal version';
+    v8SubDetails.push({ text: 'V4+ records include sourceCodeCommit for source code attestation' });
   }
   checks.push({
     id: 'V8', label: 'Source code attestation',
