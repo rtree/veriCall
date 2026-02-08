@@ -74,15 +74,15 @@ The proof and journal are submitted to `VeriCallRegistry` on Base Sepolia. The c
 
 Every call produces a ZK proof containing these journal fields. Once on-chain, the operator **cannot** alter, deny, or selectively disclose any of them.
 
-| What's Non-Repudiable | ZK Journal Parameter | Mechanism |
-|---|---|---|
-| **The decision** | `provenDecision` (`BLOCK` / `RECORD`) | TLSNotary attests server response → ZK extracts → contract binds via `keccak256` match |
-| **The reasoning** | `provenReason` (full text) | Same binding — reasoning is cryptographically inseparable from the proof |
-| **AI screening rules** | `provenSystemPromptHash` (SHA-256) | Hash of system prompt in journal. Read the [source code](lib/voice-ai/gemini.ts#L124) at the proven commit → hash → compare. |
-| **Conversation evaluated** | `provenTranscriptHash` (SHA-256) | Hash of transcript in journal. Locks which conversation produced this decision. |
-| **Source code version** | `provenSourceCodeCommit` (git SHA) | Commit embedded in API response, attested by TLSNotary. [Inspect on GitHub](https://github.com/rtree/veriCall). |
-| **When it happened** | `timestamp` | TLS session timestamp — set by TLSNotary during MPC, not by the server. |
-| **Proof targets VeriCall** | `url` + `method` + `notaryKeyFingerprint` | Contract validates URL prefix, HTTP method, and Notary identity. No proof reuse from other APIs. |
+| Role | What's Non-Repudiable | ZK Journal Parameter | Mechanism |
+|---|---|---|---|
+| **Output** | **The decision** | `provenDecision` (`BLOCK` / `RECORD`) | TLSNotary attests server response → ZK extracts → contract binds via `keccak256` match |
+| **Output** | **The reasoning** | `provenReason` (full text) | TLSNotary attests server response → ZK extracts → contract binds via `keccak256` match |
+| **Logic** | **AI screening rules** | `provenSystemPromptHash` (SHA-256) | TLSNotary attests server response → ZK extracts → contract requires non-empty. Read the [source code](lib/voice-ai/gemini.ts#L124) at the proven commit → hash → compare. |
+| **Input** | **Conversation evaluated** | `provenTranscriptHash` (SHA-256) | TLSNotary attests server response → ZK extracts → contract requires non-empty. Locks which conversation produced this decision. |
+| **Logic** | **Source code version** | `provenSourceCodeCommit` (git SHA) | TLSNotary attests server response → ZK extracts → contract requires non-empty. [Inspect on GitHub](https://github.com/rtree/veriCall). |
+| **Meta** | **When it happened** | `timestamp` | TLS session timestamp — set by TLSNotary during MPC, not by the server. Cannot be forged by client or server. |
+| **Meta** | **Proof targets VeriCall** | `url` + `method` + `notaryKeyFingerprint` | Contract validates URL prefix, HTTP method, and Notary identity. No proof reuse from other APIs. |
 
 > **Privacy**: Phone numbers never go on-chain. Transcript is hashed. AI reasoning is in plaintext — intentional, because accountability requires public auditability.
 
