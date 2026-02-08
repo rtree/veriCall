@@ -12,10 +12,12 @@ VeriCall is a system that combines **AI phone screening** with **blockchain-back
 
 1. When a phone call arrives, an AI converses with the caller and screens the call
 2. The AI decides whether the call is "spam/sales (BLOCK)" or "legitimate (RECORD)"
-3. That **decision is made tamper-proof via vlayer TLSNotary + ZK proofs**
+3. That **decision is committed on-chain** via vlayer TLSNotary + ZK proofs — creating an immutable, publicly auditable record
 4. The proof-backed decision is recorded on **Base Sepolia (EVM chain)**
 
-This allows anyone to verify that "the AI truly made this decision."
+This allows anyone to verify that VeriCall's server committed to this decision — and can't change it after the fact.
+
+> **Trust boundary**: TLSNotary proves *what the server returned*, not *what the AI model internally computed*. VeriCall creates public accountability (immutable commitment to decision + ruleset hash + transcript hash) rather than full AI inference verification. See §3.10 for the detailed trust model.
 
 ### 1.2 End-to-End Flow
 
@@ -68,7 +70,7 @@ This allows anyone to verify that "the AI truly made this decision."
 | Question | Answer |
 |----------|--------|
 | Why AI phone screening? | To automatically block spam/sales calls and only forward or record legitimate ones |
-| Why ZK proofs? | So a third party can verify that the AI's decision has not been tampered with after the fact |
+| Why ZK proofs? | So the server's decision record is immutably committed on-chain and can't be altered after the fact |
 | Why TLSNotary? | To cryptographically prove "this server really returned this JSON" for the VeriCall Decision API response |
 | Why on-chain? | To store proof data in a permanent, tamper-proof location that anyone can view and verify |
 
@@ -774,6 +776,65 @@ The MockVerifier is the standard RISC Zero pattern for **testing**. For producti
 VeriCall's contract is **already designed for this upgrade** — the `verifier` is an `IRiscZeroVerifier` interface injected via constructor. All verification checks (journal integrity, notary validation, URL binding, decision matching, hash presence) are identical whether the verifier is Mock or Groth16. No contract code changes are needed.
 
 > **Future improvement**: Production Groth16 verification activates when vlayer's ZK Prover outputs real RISC Zero Groth16 seals (~256 bytes). This is controlled entirely by vlayer's prover infrastructure. All existing VeriCall verification continues unchanged; only the seal check (check #1) gains full cryptographic binding.
+
+### 3.10 Trust Model: What Is and Isn't Proven
+
+> This section documents the exact trust boundaries of VeriCall's architecture. Every Web Proof–based system (not just VeriCall) has these same fundamental boundaries — TLSNotary proves what a server returned, not what the server internally computed.
+
+#### What Is Cryptographically Proven
+
+| Guarantee | Mechanism |
+|-----------|-----------|
+| **VeriCall's server returned this specific JSON** | TLSNotary MPC attestation — a third-party Notary joins the TLS session and attests the HTTPS response without seeing plaintext |
+| **The on-chain record matches the attested response** | Decision–Journal Binding — `keccak256` match between submitted decision/reason and proven journal fields (checks 10–11 in §3.9) |
+| **The proof targets VeriCall's API** | URL prefix validation, HTTP method check, Notary fingerprint check (checks 4–7 in §3.9) |
+| **Record is immutable** | On-chain storage — once registered, no function can modify a `CallRecord` |
+
+#### What Is Server-Attested (Not Independently Verified)
+
+| Claim | Why It's Not Independently Verified | Mitigation |
+|-------|-------------------------------------|------------|
+| `systemPromptHash` is the hash of the actual AI rules | The server self-computes this hash; the contract only checks non-empty | VeriCall publishes the system prompt — anyone can hash it and compare with the on-chain value. Discrepancies are publicly detectable. |
+| `transcriptHash` is the hash of the actual conversation | The server self-computes this hash from Twilio audio; no independent audio attestation | Future: Twilio webhook signature verification could bind the audio source. For now, the server commits to a specific hash at proof time. |
+| The AI model genuinely computed the decision | TLSNotary proves the server *response*, not the internal *inference*. The server could theoretically return a fabricated decision. | This is a fundamental limitation of all Web Proof–based AI systems. Full AI inference verification would require TEEs or verifiable inference (open research). VeriCall's contribution is making the server's *commitment* immutable and publicly auditable. |
+
+#### Why This Architecture Is Still Valuable
+
+**Status quo** (no VeriCall): Company says "our AI made this decision" → caller has no evidence, no recourse, no way to detect rule changes.
+
+**With VeriCall**: Company's server is cryptographically locked into `(decision, reason, systemPromptHash, transcriptHash)` at a specific timestamp. The company cannot:
+- Retroactively change what decision was made
+- Deny the reasoning that was given
+- Secretly apply different rules to different callers (if rule hash changes, it's publicly visible)
+- Alter which conversation was evaluated (hash is committed)
+
+This is **public accountability through immutable commitment** — strictly better than the status quo, even though it falls short of full AI inference verification.
+
+#### Trust Levels: Roadmap to AI Attribution
+
+```
+Level 0: "Trust us"                              ← Status quo (all AI screening today)
+Level 1: Server commitment attested by TLSNotary  ← VeriCall today ✅
+Level 2: AI provider response attested by TLSNotary ← vlayer POST support (near-term)
+Level 3: AI inference proven in TEE                ← TEE integration (medium-term)
+Level 4: AI inference proven in ZK                 ← Verifiable inference (long-term, LLM-scale years away)
+```
+
+**Level 2 — AI Provider Attestation**: If vlayer's Web Prover adds POST support with custom headers, VeriCall could call the Vertex AI API *through* TLSNotary — proving that Google's model returned this decision for this input. The trust assumption narrows from "VeriCall's server" to "Google's infrastructure." Technical requirements:
+- vlayer Web Prover: POST method + Authorization header support
+- Contract: relax HTTP method check from `GET` to allow `POST`
+- Decision API redesign: replay (system_prompt + transcript) → Vertex AI, attest response
+- Caveat: LLM non-determinism means replay may not match live decision exactly (`temperature=0` helps but doesn't guarantee)
+
+**Level 3 — TEE Attestation**: Running VeriCall's server inside a Trusted Execution Environment (AWS Nitro Enclaves, GCP Confidential VM) would prove that *specific code* processed *specific inputs* — covering the entire pipeline from transcript to AI call to decision. This is technically feasible today but requires significant infrastructure work (beyond hackathon scope). See §3.10 discussion notes below.
+
+**Level 4 — Verifiable Inference**: Proving the LLM inference itself in ZK (EZKL, Giza, etc.). Currently feasible only for small models; Gemini-class LLMs are years away from being ZK-provable.
+
+#### Development vs Production Verification
+
+See §3.9 for full details. Summary:
+- **Current (dev)**: `MockVerifier` — ZK seal is not cryptographically verified (SELECTOR_FAKE prefix check only). All other 13 on-chain checks are real.
+- **Production (pending vlayer)**: `RiscZeroVerifierRouter` — full Groth16 BN254 pairing check. Zero VeriCall code changes needed.
 
 ---
 

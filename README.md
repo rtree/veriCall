@@ -10,7 +10,7 @@
   </a>
 </p>
 
-**Verifiable AI Call Screening — Proving Fairness On-Chain**
+**Verifiable AI Call Screening — Every Decision, Accountable On-Chain**
 
 <img width="1000" alt="VeriCall Live Demo — full pipeline from phone call to on-chain record" src="docs/screenshots/demo-pipeline-complete.png" />
 
@@ -35,30 +35,54 @@ For every call, VeriCall:
 3. **Compresses to a ZK Proof** — RISC Zero compresses the attestation for on-chain storage
 4. **Submits on-chain** — an immutable, publicly verifiable record on Base Sepolia
 
-> 🔍 **You don't need to trust VeriCall.** Every record can be verified independently — [from your browser](https://vericall-kkz6k4jema-uc.a.run.app/verify) or [from the CLI](scripts/verify.ts). No API keys, no VeriCall servers — just you and the chain.
+> 🔍 **You don't need to take VeriCall's word for it.** Every on-chain record — decision, reasoning, ruleset hash, transcript hash — is publicly readable. Verify [from your browser](https://vericall-kkz6k4jema-uc.a.run.app/verify) or [from the CLI](scripts/verify.ts). No API keys, no VeriCall servers required.
 
 ### Beyond Phone Calls
 
-This pattern — **proving that an AI made a specific decision given specific inputs and rules** — applies to any AI decision:
+This pattern — **committing an AI decision, its inputs, and its rules to an immutable on-chain record** — applies to any AI decision system:
 
 | Domain | What's Verified |
 |--------|-----------------|
-| 📞 Call Screening | AI fairly classified caller |
-| 📄 Resume Screening | AI fairly evaluated applicant |
-| 🏦 Loan Decisions | AI fairly assessed creditworthiness |
-| 🛡️ Content Moderation | AI fairly applied guidelines |
-| ⚖️ Insurance Claims | AI fairly processed claim |
+| 📞 Call Screening | AI classification committed on-chain |
+| 📄 Resume Screening | AI evaluation committed on-chain |
+| 🏦 Loan Decisions | AI assessment committed on-chain |
+| 🛡️ Content Moderation | AI moderation committed on-chain |
+| ⚖️ Insurance Claims | AI claim decision committed on-chain |
 
 ## What Gets Proven
 
 | Element | How |
 |---------|-----|
-| **AI ruleset** | `provenSystemPromptHash` — SHA-256 of the AI's rules, proven in the ZK journal. Anyone can hash the published rules and compare. |
-| **Conversation input** | `provenTranscriptHash` — SHA-256 of the transcript, proven in the ZK journal. Proves which conversation the AI evaluated. |
-| **Decision is authentic** | TLSNotary Web Proof — a third-party Notary attests the server genuinely returned this decision. |
+| **AI ruleset** | `provenSystemPromptHash` — SHA-256 of the AI's rules, committed in the ZK journal. Anyone can hash the published rules and compare — detects rule changes. |
+| **Conversation input** | `provenTranscriptHash` — SHA-256 of the transcript, committed in the ZK journal. Commits to which conversation the server evaluated. |
+| **Decision is server-attested** | TLSNotary Web Proof — a third-party Notary attests VeriCall's server genuinely returned this decision (server-level attestation, not AI-level). |
 | **Output wasn't tampered** | Decision–Journal Binding — on-chain `keccak256` comparison ensures submitted decision/reason match the proven values. |
 | **When it happened** | TLS session timestamp — from the TLS connection itself, not self-reported. |
 | **Privacy** | Phone numbers never go on-chain. Transcript is hashed. AI reasoning is stored in plaintext — intentional, because accountability requires the reasoning to be publicly auditable. |
+
+## Trust Model
+
+**What the proofs guarantee:**
+- VeriCall's server genuinely returned this specific decision and reasoning (TLSNotary attestation — a third-party Notary cryptographically confirms the HTTPS response)
+- The server committed to a specific AI ruleset hash and transcript hash at proof time
+- The on-chain record exactly matches the attested response (Decision–Journal Binding via `keccak256`)
+- The record is immutable — VeriCall cannot retroactively alter any committed field
+
+**What the proofs do NOT guarantee (today):**
+- That the AI model internally computed the decision honestly — TLSNotary proves what the *server returned*, not what the *model computed*. This is a fundamental limitation of all Web Proof–based systems.
+- That `systemPromptHash` corresponds to the actual prompt sent to the AI — the server self-reports this hash. However, if VeriCall publishes the system prompt, anyone can hash it and compare with the on-chain value.
+- That `transcriptHash` corresponds to the actual Twilio audio — the server self-reports this hash.
+
+**Why this still matters:**
+Today, AI call screening is a black box — the company controls the AI, the rules, and the logs. A blocked caller has no recourse and no evidence.
+
+VeriCall creates **public accountability**. The server is cryptographically locked into a specific (decision, reason, ruleset hash, transcript hash) tuple at a specific time. If the published system prompt doesn't match the on-chain hash, that discrepancy is publicly detectable. VeriCall can't secretly change its screening rules per caller, and can't deny or alter a decision after the fact.
+
+This is strictly better than the status quo ("trust us") — though it falls short of full AI inference verification, which remains an open research problem across the industry.
+
+**Narrowing the trust gap (future):** If vlayer's Web Prover adds POST support with custom headers, VeriCall could directly attest the Vertex AI API response — proving that *Google's AI model* (not just VeriCall's server) returned this specific decision for this specific input. This would shift trust from "VeriCall's server" to "Google's infrastructure" — a much smaller trust assumption. Beyond that, running the server inside a TEE (Trusted Execution Environment) could prove that specific code processed specific inputs, approaching full AI inference verification.
+
+**Development status:** The ZK seal verifier currently uses `MockVerifier` (development mode — vlayer's ZK Prover has not yet shipped production Groth16 proofs). All other on-chain checks (journal decode, notary validation, URL binding, decision matching, hash presence) are real and enforced. The contract architecture supports production Groth16 with zero code changes → [Details](DESIGN.md#39-verifier-honesty-mockverifier-vs-production).
 
 ## Architecture
 
@@ -127,7 +151,7 @@ The ZK proof produces an ABI-encoded journal. All 9 fields are decoded and valid
 | `provenDecision` | `"BLOCK"` / `"RECORD"` — from the API response | Contract binds to submitted `decision` via `keccak256` match (Steps I–J) |
 | `provenReason` | AI reasoning — from the API response | Contract binds to submitted `reason` via `keccak256` match (Steps I–J) |
 | `provenSystemPromptHash` | SHA-256 of AI ruleset — from the response | Contract requires non-empty; anyone can hash published rules and compare |
-| `provenTranscriptHash` | SHA-256 of conversation — from the response | Contract requires non-empty; proves which conversation the AI evaluated |
+| `provenTranscriptHash` | SHA-256 of conversation — from the API response | Contract requires non-empty; commits to which conversation was evaluated |
 
 ### What the Contract Checks
 
