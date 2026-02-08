@@ -1,6 +1,6 @@
 # VeriCall — System Design Document
 
-> Anchoring AI call-screening decisions on-chain with ZK proofs
+> A "Mathematical Gatekeeper" — protecting families from AI voice scams with verifiable, on-chain proof
 
 ---
 
@@ -8,9 +8,9 @@
 
 ### 1.1 What Is VeriCall?
 
-VeriCall is a system that combines **AI phone screening** with **blockchain-backed proofs**.
+VeriCall is a system that puts an **emotionless AI gatekeeper** in front of every phone call, combining **AI phone screening** with **blockchain-backed proofs** to protect families from voice cloning scams and fraud.
 
-1. When a phone call arrives, an AI converses with the caller and screens the call
+1. When a phone call arrives, an AI converses with the caller and screens the call — following strict, auditable rules without emotional manipulation
 2. The AI decides whether the call is "spam/sales (BLOCK)" or "legitimate (RECORD)"
 3. That **decision is committed on-chain** via vlayer TLSNotary + ZK proofs — creating an immutable, publicly auditable record
 4. The proof-backed decision is recorded on **Base Sepolia (EVM chain)**

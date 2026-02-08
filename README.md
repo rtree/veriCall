@@ -10,32 +10,52 @@
   </a>
 </p>
 
-**Verifiable AI Call Screening — Every Decision, Accountable On-Chain**
+**A "Mathematical Gatekeeper" — Protecting Your Family from AI Scams with Verifiable Trust**
 
 <img width="1000" alt="VeriCall Live Demo — full pipeline from phone call to on-chain record" src="docs/screenshots/demo-pipeline-complete.png" />
 
-## The Problem
+## 🌍 The Crisis
 
-Companies use AI to screen phone calls — blocking spam while forwarding legitimate business. But who watches the AI?
+**Voice is no longer proof of identity.**
 
-- How do callers know the AI judged them fairly?
-- What rules was the AI given?
-- Was the same ruleset applied to everyone?
+"Voice Cloning" scams are surging worldwide. Scammers copy a family member's voice from a short sample — then call with fabricated emergencies: fake accidents, fake arrests, fake hospital bills. People in panic cannot think clearly. These attacks exploit human emotions with surgical precision.
 
-Today, there's no record. The company controls the AI, the rules, and the logs. A caller blocked by AI has no recourse.
+- 🇺🇸 **"Grandparent Scams"** — USA: $3.4B lost to phone fraud annually (FTC 2023)
+- 🇪🇺 **"Impersonation Scams"** — Europe: AI-generated voice fraud rising sharply
+- 🇯🇵 **"オレオレ詐欺"** — Japan: decades-old scam supercharged by AI voice synthesis
 
-## The Solution
+We cannot protect our families only by saying *"Be careful"* against these technical attacks. We need a **technical shield**.
 
-VeriCall anchors every AI decision **on-chain** using [vlayer](https://vlayer.xyz) Web Proofs and ZK Proofs.
+## 🛡️ The Solution: A Mathematical Gatekeeper
 
-For every call, VeriCall:
+VeriCall puts a wall of logic — without emotions — in front of every call.
 
-1. **Captures the inputs** — conversation transcript hash + AI ruleset hash
-2. **Generates a Web Proof** — TLSNotary attests that VeriCall's server genuinely returned this decision
-3. **Compresses to a ZK Proof** — RISC Zero compresses the attestation for on-chain storage
-4. **Submits on-chain** — an immutable, publicly verifiable record on Base Sepolia
+### 1. 🤖 AI Agent Answers First
 
-> 🔍 **You don't need to take VeriCall's word for it.** Every on-chain record — decision, reasoning, ruleset hash, transcript hash — is publicly readable. Verify [from your browser](https://vericall-kkz6k4jema-uc.a.run.app/verify) or [from the CLI](scripts/verify.ts). No API keys, no VeriCall servers required.
+The AI answers all calls before they reach your family. It has no emotions. Even if a scammer cries, screams, or fabricates an emergency — the AI stays calm and checks **facts** and **identity**.
+
+### 2. 📋 Strict Rules, No Exceptions
+
+The AI follows **fixed screening rules**. It never skips verification even if the voice sounds like your family. The rules are embedded in the source code — public, auditable, unchangeable per-caller.
+
+### 3. ⚡ Spam or Important?
+
+- **SPAM** → The AI blocks the call immediately and sends a **Spam Alert** to you.
+- **IMPORTANT** → The AI connects the call to you or sends an email notification right away.
+
+### 4. 🔐 Proof of Honesty (ZK Proof)
+
+The AI's decision is anchored **on-chain** using [vlayer](https://vlayer.xyz) Web Proofs and ZK Proofs. By using Zero-Knowledge Proofs, VeriCall proves that **the AI followed the rules correctly** — while keeping your privacy. Every decision, every reasoning, every ruleset hash is committed to an immutable record on Base Sepolia.
+
+> 🔍 **You don't need to take VeriCall's word for it.** Every on-chain record — decision, reasoning, ruleset hash, transcript hash, source code commit — is publicly readable. Verify [from your browser](https://vericall-kkz6k4jema-uc.a.run.app/verify) or [from the CLI](scripts/verify.ts). No API keys, no VeriCall servers required.
+
+## Verifiable Trust — From Black Box to Explainable AI
+
+VeriCall is not a "black box." You can check the logic later to see **why** the AI made that decision. This is an **Audit Trail** — not just for regulators, but for anyone affected by the decision.
+
+> *"Protecting family love with a shield of technology."*
+
+In a world where we cannot trust voices, VeriCall creates a new standard: **Verifiable Trust**.
 
 ### Beyond Phone Calls
 
