@@ -1,9 +1,5 @@
 # ☎️ VeriCall
 
-> 🏴‍☠️ **HackMoney 2026 — but money is *already* being hacked — by Phone Call.**
-> $16 B lost to fraud in 2024 alone (FBI IC3). AI clones any voice from a 3-second clip (McAfee Labs).
-> We built a mathematical wall that can't be talked around.
-
 <p align="left">
   <a href="https://vericall-kkz6k4jema-uc.a.run.app/demo">
     <img src="https://img.shields.io/badge/▶_LIVE_DEMO-Watch_the_Pipeline-06b6d4?style=for-the-badge" alt="Live Demo" />
@@ -14,7 +10,10 @@
   </a>
 </p>
 
-**A "Mathematical Gatekeeper" — Protecting Your Family from AI Scams with Verifiable Trust**
+
+**Hello! HackMoney 2026! but money is *already* being hacked — by Scam Phone Call approx. $16 B in 2024 alone (FBI IC3). A "Mathematical Gatekeeper" — Protecting Your Family from AI Scams with Verifiable Trust**
+
+We built a AI wall for protecting that Money.
 
 > **We don't prove the AI is correct. We prove the operator can't secretly change the story afterward.**
 > *— AI decision non-repudiation + public accountability, anchored on-chain.*
