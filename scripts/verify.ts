@@ -375,11 +375,13 @@ async function main(): Promise<void> {
       '  V3: The contract itself confirms journal integrity (on-chain verifyJournal())',
       '  V4: Independent re-verification — calling verifier.verify() directly from this script',
       '  V5: The TLSNotary/HTTP metadata in the journal is well-formed and non-trivial',
+      '  V5b: The proven decision matches the on-chain record decision',
       '  V6: The registration transaction exists and is findable on BaseScan',
       '  V7: The ProofVerified event was emitted, confirming ZK verification happened on-chain',
+      '  V8: Source code commit SHA is present on-chain (verifiable on GitHub)',
       ...(DEEP_MODE ? [
-        '  V8: The source URL is still accessible (current state check)',
-        '  V9: The current API response is consistent with on-chain extracted data',
+        '  V9: The source URL is still accessible (current state check)',
+        '  V10: The current API response is consistent with on-chain extracted data',
       ] : []),
     ],
   };
@@ -611,7 +613,43 @@ async function verifyRecord(
       : 'Could not find ProofVerified event',
   });
 
-  // ─── V8/V9: Deep verification (--deep) ────────────────────
+  // ─── V5b: Decision consistency ────────────────────────────
+
+  const provenDecisionUpper = provenData.provenDecision?.toUpperCase() || '';
+  const onChainDecisionLabel = DECISION_LABEL[decision] || 'UNKNOWN';
+  const decisionMatch = provenDecisionUpper === onChainDecisionLabel.toUpperCase();
+  checks.push({
+    id: 'V5b', label: 'Decision consistency (proven vs on-chain)',
+    passed: decisionMatch,
+    detail: decisionMatch
+      ? `Proven "${provenData.provenDecision}" matches on-chain "${onChainDecisionLabel}"`
+      : `Proven "${provenData.provenDecision || '?'}" ≠ on-chain "${onChainDecisionLabel}"`,
+  });
+
+  // ─── V8: Source code attestation ──────────────────────────
+
+  const commitSha = provenData.provenSourceCodeCommit;
+  let v8Passed = false;
+  let v8Detail = '';
+  if (commitSha && commitSha.length >= 7 && commitSha !== 'unknown') {
+    const isValidHex = /^[0-9a-f]{7,40}$/.test(commitSha);
+    v8Passed = isValidHex;
+    v8Detail = isValidHex
+      ? `Commit ${commitSha.slice(0, 7)}… on-chain → ${CONFIG.repo}/tree/${commitSha}`
+      : `Invalid commit format: "${commitSha}"`;
+  } else {
+    v8Passed = false;
+    v8Detail = commitSha === 'unknown'
+      ? 'sourceCodeCommit = "unknown" — record created before attestation was deployed'
+      : 'Source code commit not in journal — cannot verify logic';
+  }
+  checks.push({
+    id: 'V8', label: 'Source code attestation (commit SHA on-chain)',
+    passed: v8Passed,
+    detail: v8Detail,
+  });
+
+  // ─── V9/V10: Deep verification (--deep) ───────────────────
 
   let deepCheck: RecordVerification['deepCheck'] = undefined;
   if (DEEP_MODE && provenData.url) {
@@ -690,7 +728,7 @@ async function deepVerify(
   }
 
   checks.push({
-    id: 'V8', label: 'Source URL currently accessible',
+    id: 'V9', label: 'Source URL currently accessible',
     passed: urlAccessible,
     detail: urlAccessible
       ? `HTTP 200 from ${url}`
@@ -698,7 +736,7 @@ async function deepVerify(
   });
 
   checks.push({
-    id: 'V9', label: 'Current API response consistent with on-chain extracted data',
+    id: 'V10', label: 'Current API response consistent with on-chain extracted data',
     passed: responseConsistent,
     detail: responseConsistent
       ? 'Decision API currently returns the same decision as the on-chain proof'
@@ -803,6 +841,13 @@ function printRecord(rec: RecordVerification): void {
     if (check.id === 'V4' && check.extra) {
       console.log(`         ${C.D}  • Seal:          ${check.extra.seal} (${check.extra.sealLength} bytes)${C.R}`);
     }
+
+    // Print GitHub link for V8 (source code attestation)
+    if (check.id === 'V8' && check.passed) {
+      const commit = rec.provenData.provenSourceCodeCommit;
+      console.log(`         ${C.D}  • GitHub:        ${CONFIG.repo}/tree/${commit}${C.R}`);
+      console.log(`         ${C.D}  • System prompt:  ${CONFIG.repo}/blob/${commit}/lib/voice-ai/gemini.ts${C.R}`);
+    }
   }
   console.log('');
 }
@@ -830,9 +875,32 @@ function printSummary(report: VerificationReport): void {
     console.log(`  ${c}║${' '.repeat(bW)}║${C.R}`);
     console.log(`  ${c}╚${bar}╝${C.R}`);
   } else {
-    const c = `${C.B}${C.RD}`;
+    // Collect failed check IDs per record for informative summary
+    const failedChecks = report.records.flatMap(r =>
+      r.checks.filter(c => !c.passed).map(c => ({ record: r.index, id: c.id, label: c.label }))
+    );
+    const contractFails = report.contractChecks.filter(c => !c.passed);
+    const c = `${C.B}${C.Y}`;
     console.log(`  ${c}╔${bar}╗${C.R}`);
-    console.log(`  ${c}║${pad(`  ❌ SOME CHECKS FAILED  (${summary.passCount}/${total} passed)`)}  ║${C.R}`);
+    console.log(`  ${c}║${' '.repeat(bW)}║${C.R}`);
+    console.log(`  ${c}║${pad(`  ⚠️  ${summary.passCount}/${total} CHECKS PASSED  (${summary.failCount} failed)`)}  ║${C.R}`);
+    console.log(`  ${c}║${' '.repeat(bW)}║${C.R}`);
+    console.log(`  ${c}║${pad(`  • ${summary.totalRecords} record${summary.totalRecords !== 1 ? 's' : ''} verified on Base Sepolia`)}  ║${C.R}`);
+    for (const f of contractFails) {
+      console.log(`  ${c}║${pad(`  ${FAIL} [${f.id}] ${f.label}`)}  ║${C.R}`);
+    }
+    // Group record failures by check ID
+    const failGroups = new Map<string, number[]>();
+    for (const f of failedChecks) {
+      const arr = failGroups.get(f.id) || [];
+      arr.push(f.record);
+      failGroups.set(f.id, arr);
+    }
+    for (const [checkId, records] of failGroups) {
+      const label = failedChecks.find(f => f.id === checkId)?.label || '';
+      console.log(`  ${c}║${pad(`  ${FAIL} [${checkId}] Record #${records.join(', #')}: ${label}`)}  ║${C.R}`);
+    }
+    console.log(`  ${c}║${' '.repeat(bW)}║${C.R}`);
     console.log(`  ${c}╚${bar}╝${C.R}`);
   }
 
