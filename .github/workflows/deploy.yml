@@ -131,7 +131,7 @@ jobs:
             --platform managed \
             --allow-unauthenticated \
             --port 8080 \
-            --memory 1Gi \
+            --memory 2Gi \
             --cpu 2 \
             --min-instances 1 \
             --max-instances 1 \

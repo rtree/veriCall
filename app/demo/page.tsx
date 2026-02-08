@@ -39,6 +39,17 @@ interface LogEntry {
   indent?: boolean; // Sub-detail row (dimmer, smaller)
 }
 
+interface CallSession {
+  callSid: string;
+  from: string;
+  phase: Phase;
+  logs: LogEntry[];
+  lastTxHash: string | null;
+  lastBlockNumber: number | null;
+  turnCount: number;
+  startTime: string;
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Constants
 // ═══════════════════════════════════════════════════════════════
@@ -83,30 +94,41 @@ const ProofVerifiedEvent = parseAbiItem(
 // ═══════════════════════════════════════════════════════════════
 
 function useDemo() {
-  const [phase, setPhase] = useState<Phase>('connecting');
-  const [logs, setLogs] = useState<LogEntry[]>([]);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastTxHash, setLastTxHash] = useState<string | null>(null);
-  const [lastBlockNumber, setLastBlockNumber] = useState<number | null>(null);
-  const [turnCount, setTurnCount] = useState(0);
+  const [sessions, setSessions] = useState<Record<string, CallSession>>({});
+  const [activeCallSid, setActiveCallSid] = useState<string | null>(null);
   const idRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
+  const activeRef = useRef<string | null>(null);
 
+  // Keep ref in sync so addLog always targets the current active tab
+  activeRef.current = activeCallSid;
+
+  const makeEntry = useCallback(
+    (icon: string, label: string, text: string, color: string, logPhase: Phase, link?: string, indent?: boolean): LogEntry => ({
+      id: idRef.current++,
+      timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
+      icon, label, text, color, phase: logPhase, link, indent,
+    }),
+    [],
+  );
+
+  // Add log to the currently active session (used by runVerification)
   const addLog = useCallback(
     (icon: string, label: string, text: string, color: string, logPhase: Phase, link?: string, indent?: boolean) => {
+      const sid = activeRef.current;
+      if (!sid) return;
       const entry: LogEntry = {
         id: idRef.current++,
         timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
-        icon,
-        label,
-        text,
-        color,
-        phase: logPhase,
-        link,
-        indent,
+        icon, label, text, color, phase: logPhase, link, indent,
       };
-      setLogs(prev => [...prev, entry]);
+      setSessions(prev => {
+        const session = prev[sid];
+        if (!session) return prev;
+        return { ...prev, [sid]: { ...session, logs: [...session.logs, entry] } };
+      });
     },
     [],
   );
@@ -114,84 +136,104 @@ function useDemo() {
   const handleEvent = useCallback(
     (event: DemoEvent) => {
       const { type, data, callSid } = event;
+      if (!callSid) return;
 
-      switch (type) {
-        case 'call:start':
-          setPhase('call');
-          setTurnCount(0);
-          setLastTxHash(null);
-          setLastBlockNumber(null);
-          addLog('📞', 'CALL', `Call connected from ${data.from || 'unknown'}`, '#3b82f6', 'call');
-          break;
+      setSessions(prev => {
+        const next = { ...prev };
 
-        case 'call:greeting':
-          addLog('🤖', 'AI', String(data.text), '#22c55e', 'call');
-          break;
-
-        case 'stt:transcript':
-          setTurnCount(prev => prev + 1);
-          addLog('🗣️', 'Caller', String(data.text), '#eab308', 'call');
-          break;
-
-        case 'ai:response':
-          addLog('🤖', 'AI', String(data.text), '#22c55e', 'call');
-          break;
-
-        case 'ai:decision': {
-          setPhase('decision');
-          const decision = String(data.decision).toUpperCase();
-          const isBlock = decision === 'BLOCK';
-          addLog(
-            isBlock ? '🚫' : '✅',
-            decision,
-            String(data.reason || ''),
-            isBlock ? '#ef4444' : '#22c55e',
-            'decision',
-          );
-          break;
+        if (type === 'call:start') {
+          next[callSid] = {
+            callSid,
+            from: String(data.from || 'unknown'),
+            phase: 'call',
+            logs: [makeEntry('📞', 'CALL', `Call connected from ${data.from || 'unknown'}`, '#3b82f6', 'call')],
+            lastTxHash: null,
+            lastBlockNumber: null,
+            turnCount: 0,
+            startTime: new Date().toLocaleTimeString('en-US', { hour12: false }),
+          };
+          return next;
         }
 
-        case 'email:sent':
-          addLog('📧', 'Email', `Notification sent (${data.decision})`, '#3b82f6', 'decision');
-          break;
+        const session = next[callSid];
+        if (!session) return prev;
 
-        case 'witness:start':
-          setPhase('proof');
-          addLog('⛓️', 'Witness', `Pipeline started`, '#06b6d4', 'proof');
-          break;
+        const updated = { ...session };
 
-        case 'witness:web-proof':
-          addLog('🌐', 'WebProof', `Generated (${data.proofSize} chars, TLSNotary MPC)`, '#06b6d4', 'proof');
-          break;
+        switch (type) {
+          case 'call:greeting':
+            updated.logs = [...session.logs, makeEntry('🤖', 'AI', String(data.text), '#22c55e', 'call')];
+            break;
 
-        case 'witness:zk-proof':
-          addLog('🧮', 'ZK Proof', `Compressed (RISC Zero → Groth16, seal: ${data.sealHash})`, '#06b6d4', 'proof');
-          break;
+          case 'stt:transcript':
+            updated.turnCount = session.turnCount + 1;
+            updated.logs = [...session.logs, makeEntry('🗣️', 'Caller', String(data.text), '#eab308', 'call')];
+            break;
 
-        case 'witness:on-chain': {
-          const txHash = String(data.txHash ?? '');
-          const blockNum = Number(data.blockNumber ?? 0);
-          setLastTxHash(txHash);
-          setLastBlockNumber(blockNum);
-          setPhase('complete');
-          addLog('⛓️', 'ON-CHAIN', `TX: ${txHash.slice(0, 10)}…${txHash.slice(-8)}  block: ${blockNum}`, '#22c55e', 'complete', txHash ? `${BASESCAN}/tx/${txHash}` : undefined);
-          break;
-        }
+          case 'ai:response':
+            updated.logs = [...session.logs, makeEntry('🤖', 'AI', String(data.text), '#22c55e', 'call')];
+            break;
 
-        case 'witness:failed':
-          addLog('❌', 'Failed', String(data.error), '#ef4444', 'error');
-          setPhase('waiting');
-          break;
-
-        case 'call:end':
-          if (!data.decision) {
-            addLog('📞', 'Hangup', 'Call ended without decision', '#888', 'waiting');
-            setPhase('waiting');
+          case 'ai:decision': {
+            const decision = String(data.decision).toUpperCase();
+            const isBlock = decision === 'BLOCK';
+            updated.phase = 'decision';
+            updated.logs = [...session.logs, makeEntry(
+              isBlock ? '🚫' : '✅', decision, String(data.reason || ''),
+              isBlock ? '#ef4444' : '#22c55e', 'decision',
+            )];
+            break;
           }
-          break;
+
+          case 'email:sent':
+            updated.logs = [...session.logs, makeEntry('📧', 'Email', `Notification sent (${data.decision})`, '#3b82f6', 'decision')];
+            break;
+
+          case 'witness:start':
+            updated.phase = 'proof';
+            updated.logs = [...session.logs, makeEntry('⛓️', 'Witness', `Pipeline started`, '#06b6d4', 'proof')];
+            break;
+
+          case 'witness:web-proof':
+            updated.logs = [...session.logs, makeEntry('🌐', 'WebProof', `Generated (${data.proofSize} chars, TLSNotary MPC)`, '#06b6d4', 'proof')];
+            break;
+
+          case 'witness:zk-proof':
+            updated.logs = [...session.logs, makeEntry('🧮', 'ZK Proof', `Compressed (RISC Zero → Groth16, seal: ${data.sealHash})`, '#06b6d4', 'proof')];
+            break;
+
+          case 'witness:on-chain': {
+            const txHash = String(data.txHash ?? '');
+            const blockNum = Number(data.blockNumber ?? 0);
+            updated.lastTxHash = txHash;
+            updated.lastBlockNumber = blockNum;
+            updated.phase = 'complete';
+            updated.logs = [...session.logs, makeEntry('⛓️', 'ON-CHAIN', `TX: ${txHash.slice(0, 10)}…${txHash.slice(-8)}  block: ${blockNum}`, '#22c55e', 'complete', txHash ? `${BASESCAN}/tx/${txHash}` : undefined)];
+            break;
+          }
+
+          case 'witness:failed':
+            updated.phase = 'error';
+            updated.logs = [...session.logs, makeEntry('❌', 'Failed', String(data.error), '#ef4444', 'error')];
+            break;
+
+          case 'call:end':
+            if (!data.decision) {
+              updated.logs = [...session.logs, makeEntry('📞', 'Hangup', 'Call ended without decision', '#888', 'call')];
+            }
+            break;
+        }
+
+        next[callSid] = updated;
+        return next;
+      });
+
+      // Auto-switch to new call
+      if (type === 'call:start') {
+        setActiveCallSid(callSid);
       }
     },
-    [addLog],
+    [makeEntry],
   );
 
   // SSE connection
@@ -202,7 +244,6 @@ function useDemo() {
     let reconnectTimer: ReturnType<typeof setTimeout>;
 
     async function connect() {
-      setPhase('connecting');
       setError(null);
 
       try {
@@ -216,7 +257,6 @@ function useDemo() {
         }
 
         setConnected(true);
-        setPhase('waiting');
 
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
@@ -247,13 +287,11 @@ function useDemo() {
         }
 
         setConnected(false);
-        setPhase('connecting');
         reconnectTimer = setTimeout(connect, 3000);
       } catch (err) {
         if (ctrl.signal.aborted) return;
         setConnected(false);
         setError(err instanceof Error ? err.message : String(err));
-        setPhase('error');
         reconnectTimer = setTimeout(connect, 5000);
       }
     }
@@ -265,7 +303,25 @@ function useDemo() {
     };
   }, [handleEvent]);
 
-  return { phase, logs, connected, error, lastTxHash, lastBlockNumber, turnCount, addLog };
+  // Derive active session
+  const activeSession = activeCallSid ? sessions[activeCallSid] ?? null : null;
+  const sessionList = Object.values(sessions);
+
+  return {
+    connected,
+    error,
+    // Session management
+    sessionList,
+    activeCallSid,
+    setActiveCallSid,
+    // Active session data (backward-compatible with rendering code)
+    phase: (activeSession?.phase ?? (connected ? 'waiting' : error ? 'error' : 'connecting')) as Phase,
+    logs: activeSession?.logs ?? [],
+    lastTxHash: activeSession?.lastTxHash ?? null,
+    lastBlockNumber: activeSession?.lastBlockNumber ?? null,
+    turnCount: activeSession?.turnCount ?? 0,
+    addLog,
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -294,7 +350,7 @@ async function chunkedGetLogs(client: any, params: { address: `0x${string}`; eve
 }
 
 export default function DemoPage() {
-  const { phase, logs, connected, error, lastTxHash, lastBlockNumber, turnCount, addLog } = useDemo();
+  const { phase, logs, connected, error, lastTxHash, lastBlockNumber, turnCount, addLog, sessionList, activeCallSid, setActiveCallSid } = useDemo();
   const logEndRef = useRef<HTMLDivElement>(null);
   const [isVerifying, setIsVerifying] = useState(false);
 
@@ -622,6 +678,45 @@ export default function DemoPage() {
         )}
       </div>
 
+      {/* Call Tabs */}
+      {sessionList.length > 0 && (
+        <div style={styles.tabBar}>
+          {sessionList.map(s => {
+            const isActive = s.callSid === activeCallSid;
+            const phaseColor: Record<Phase, string> = {
+              connecting: '#eab308', waiting: '#888', call: '#3b82f6',
+              decision: '#eab308', proof: '#06b6d4', complete: '#22c55e', error: '#ef4444',
+            };
+            const dot = phaseColor[s.phase];
+            const isLive = s.phase === 'call' || s.phase === 'proof';
+            return (
+              <button
+                key={s.callSid}
+                onClick={() => setActiveCallSid(s.callSid)}
+                style={{
+                  ...styles.tab,
+                  borderColor: isActive ? dot + '60' : '#222',
+                  background: isActive ? dot + '10' : 'transparent',
+                  color: isActive ? '#fff' : '#888',
+                }}
+              >
+                <span style={{
+                  width: 7, height: 7, borderRadius: '50%',
+                  background: dot, display: 'inline-block', flexShrink: 0,
+                  boxShadow: isLive ? `0 0 6px ${dot}` : undefined,
+                  animation: isLive ? 'pulse 2s infinite' : undefined,
+                }} />
+                <span style={{ fontSize: '0.8rem', fontWeight: isActive ? 600 : 400 }}>
+                  {s.from === 'unknown' ? 'Call' : s.from}
+                </span>
+                <span style={{ fontSize: '0.65rem', color: '#555' }}>{s.startTime}</span>
+                {s.phase === 'complete' && <span style={{ fontSize: '0.7rem' }}>✓</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Event Log */}
       <div style={styles.logContainer}>
         {logs.length === 0 && phase === 'waiting' && (
@@ -791,6 +886,28 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     display: 'flex',
     flexDirection: 'column',
+  },
+  tabBar: {
+    display: 'flex',
+    gap: '0.5rem',
+    padding: '0.4rem 1.5rem',
+    borderBottom: '1px solid #1a1a1a',
+    overflowX: 'auto' as const,
+    background: '#080808',
+  },
+  tab: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.4rem',
+    padding: '0.3rem 0.75rem',
+    borderRadius: '6px',
+    border: '1px solid',
+    background: 'transparent',
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    whiteSpace: 'nowrap' as const,
+    outline: 'none',
+    transition: 'all 0.2s',
   },
   header: {
     display: 'flex',
