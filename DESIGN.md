@@ -83,16 +83,14 @@ This allows anyone to verify that "the AI truly made this decision."
 ```
 Twilio (PSTN) ──POST──→ /phone/incoming (Webhook)
                               │
-                              ├─ Whitelisted number → Forward immediately (TwiML <Dial>)
-                              │
-                              └─ Unknown number → AI screening
+                              └─ All calls → AI screening
                                    │
                                    └─ TwiML <Connect><Stream> to open WebSocket
 ```
 
 **File**: [app/phone/incoming/route.ts](app/phone/incoming/route.ts)
 - Webhook endpoint that Twilio POSTs to on incoming calls
-- `router.ts` decides: whitelist → forward / otherwise → AI
+- All incoming calls are routed to AI screening
 
 **File**: [app/phone/_lib/twiml-builder.ts](app/phone/_lib/twiml-builder.ts)
 - For AI screening, returns `<Connect><Stream>` TwiML
@@ -460,7 +458,7 @@ veriCall/
 │   │   ├── status/route.ts             # Twilio Status Callback
 │   │   ├── logs/route.ts               # Call log API
 │   │   └── _lib/
-│   │       ├── router.ts               # Routing logic (whitelist/AI)
+│   │       ├── router.ts               # Routing logic (AI screening)
 │   │       ├── twiml-builder.ts        # TwiML XML generation
 │   │       ├── twilio.ts               # Twilio SDK wrapper
 │   │       └── email.ts                # Email notification
@@ -685,15 +683,15 @@ struct CallRecord {
 - **Immutable checks**: `EXPECTED_NOTARY_KEY_FP`, `expectedQueriesHash` — validated against journal fields
 - **URL prefix validation**: byte-by-byte check that journal URL starts with `expectedUrlPrefix`
 - **Custom errors**: `AlreadyRegistered`, `InvalidDecision`, `DecisionMismatch`, `ZKProofVerificationFailed`, etc. (replaces require strings)
-- Decoding `journalDataAbi` yields `decision`, `reason`, `systemPromptHash`, `transcriptHash` values
-- `sourceUrl` indicates which API endpoint was proven (derived from journal)
+- Decoding `journalDataAbi` yields all 9 fields: `notaryKeyFingerprint`, `method`, `url`, `timestamp`, `queriesHash`, `provenDecision`, `provenReason`, `provenSystemPromptHash`, `provenTranscriptHash`
+- `sourceUrl` is derived from the journal's `url` field (proven by ZK proof, not supplied externally)
 - `verified == true` means the ZK proof passed on-chain verification
 
 **Phase Plan**:
 - Phase 1 (complete): On-chain storage of proof data (Proof of Existence) — VeriCallRegistry V1
 - Phase 2 (complete): MockVerifier + on-chain ZK verification — VeriCallRegistryV2 (`0x656ae703ca94cc4247493dec6f9af9c6f974ba82`)
 - **Phase 3 (current): Journal-bound decision integrity + immutable validation** — VeriCallRegistryV3 (`0x4395cf02b8d343aae958bda7ac6ed71fbd4abd48`)
-  - 9-field journal: decision, reason, systemPromptHash, transcriptHash, + TLS metadata
+  - 9-field journal: `notaryKeyFingerprint`, `method`, `url`, `timestamp`, `queriesHash`, `provenDecision`, `provenReason`, `provenSystemPromptHash`, `provenTranscriptHash`
 - Phase 4 (future): vlayer production → switch to RiscZeroVerifierRouter
 - Phase 5 (future): Cross-chain verification on Sui
 
@@ -1150,7 +1148,7 @@ struct CallRecord {
  Step 4: vlayer ZK Proof (RISC Zero zkVM → Mock Seal)
 ═══════════════════════════════════════════════════════════════════════
 
-  pipeline.ts: compressToZKProof(webProof, ["decision", "reason"])
+  pipeline.ts: compressToZKProof(webProof, ["decision", "reason", "systemPromptHash", "transcriptHash"])
 
   Request:
     POST https://zk-prover.vlayer.xyz/api/v0/compress-web-proof

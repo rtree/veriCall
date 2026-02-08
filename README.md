@@ -215,6 +215,19 @@ pnpm dev                      # dev server with WebSocket
 
 **Future**: Cross-chain verification · Caller-initiated proofs · Multi-tenant support.
 
+## AI Attribution
+
+This project was built with AI assistance (GitHub Copilot / Claude). Per ETHGlobal rules, here is how AI was used:
+
+| Area | How AI Was Used |
+|------|-----------------|
+| **Architecture & Research** | SDK documentation lookup (vlayer, RISC Zero, TLSNotary), API design patterns, ZK proof pipeline exploration |
+| **Documentation** | Human concept → detailed technical writing (README, DESIGN.md, inline comments) |
+| **Code Generation** | Human concept + specs → implementation (Solidity contracts, witness pipeline, verification CLI, web pages) |
+| **Debugging** | Log analysis, error diagnosis, Gemini output format investigation |
+
+All architectural decisions, system design, and verification logic were human-directed. AI accelerated implementation and documentation — it did not independently design the proof pipeline or contract validation.
+
 ## License
 
 MIT
